@@ -15,7 +15,7 @@ fn main() -> Result<(), Error> {
         .expect("Failed to get screen");
     let win = conn.generate_id();
 
-    let (width, height) = (1920, 18);
+    let (width, height) = (2560, 18);
 
     xcb::create_window(
 	&conn,
