@@ -40,7 +40,10 @@ fn main() -> Result<(), Error> {
         0,
         xcb::WINDOW_CLASS_INPUT_OUTPUT as u16,
         screen.root_visual(),
-        &[(xcb::CW_BACK_PIXEL, screen.white_pixel())],
+        &[
+            (xcb::CW_BACK_PIXEL, screen.white_pixel()),
+            (xcb::CW_EVENT_MASK, xcb::EVENT_MASK_EXPOSURE),
+        ],
     );
 
     
