@@ -82,13 +82,17 @@ fn main() -> Result<(), Error> {
     xcb::map_window(&conn, win);
     conn.flush();
 
-    ctx.set_source_rgb(0.1, 0.1, 0.1);
-    ctx.rectangle(0.0, 0.0, 2560.0, 20.0);
-    ctx.fill();
-
-    conn.flush();
-
-    std::thread::sleep(std::time::Duration::from_secs(10));
+    while let Some(event) = conn.wait_for_event() {
+	match event.response_type() & !0x80 {
+	    xcb::EXPOSE => {
+		ctx.set_source_rgb(0.1, 0.1, 0.1);
+		ctx.rectangle(0.0, 0.0, 2560.0, 20.0);
+		ctx.fill();
+	    }
+	    _ => ()
+	}
+	conn.flush();
+    }
 
     Ok(())
 }
