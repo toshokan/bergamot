@@ -17,6 +17,40 @@ fn intern_atoms(conn: &'_ xcb::Connection, names: &[&str]) -> Vec<xcb::InternAto
         .collect()
 }
 
+#[derive(Debug)]
+struct Rectangle {
+    start: u32,
+    stop: u32,
+}
+
+#[derive(Debug)]
+struct Area {
+    align: Align,
+    width: u32,
+    text: String,
+    tag: String,
+    colour: Colour,
+}
+
+struct Paint {
+    left: f64,
+    right: f64,
+    area: Area,
+}
+
+#[derive(Debug)]
+enum Align {
+    Left,
+    Right,
+}
+
+#[derive(Debug)]
+struct Colour {
+    red: f64,
+    green: f64,
+    blue: f64,
+}
+
 fn main() -> Result<(), Error> {
     let (conn, _) = xcb::Connection::connect(None)?;
     let screen = conn
@@ -26,8 +60,6 @@ fn main() -> Result<(), Error> {
         .expect("Failed to get screen");
     let win = conn.generate_id();
 
-
-
     let (width, height) = (screen.width_in_pixels(), 18);
 
     xcb::create_window(
@@ -35,8 +67,8 @@ fn main() -> Result<(), Error> {
         xcb::COPY_FROM_PARENT as u8,
         win,
         screen.root(),
-	0,
-	20,
+        0,
+        20,
         width,
         height,
         0,
@@ -84,12 +116,64 @@ fn main() -> Result<(), Error> {
     xcb::map_window(&conn, win);
     conn.flush();
 
+    let mut area_paints = vec![];
+
     while let Some(event) = conn.wait_for_event() {
         match event.response_type() & !0x80 {
             xcb::EXPOSE => {
+                let (width, height) = (width.into(), height.into());
                 ctx.set_source_rgb(0.1, 0.1, 0.1);
-                ctx.rectangle(0.0, 0.0, width.into(), height.into());
+                ctx.rectangle(0.0, 0.0, width, height);
                 ctx.fill();
+
+                let mut areas = vec![
+                    Area {
+                        width: 100,
+                        align: Align::Left,
+                        tag: "left".to_string(),
+                        text: "clicky".to_string(),
+                        colour: Colour {
+                            red: 1.0,
+                            green: 0.0,
+                            blue: 0.0,
+                        },
+                    },
+                    Area {
+                        width: 100,
+                        align: Align::Right,
+                        tag: "left".to_string(),
+                        text: "clicky".to_string(),
+                        colour: Colour {
+                            red: 0.0,
+                            green: 0.0,
+                            blue: 1.0,
+                        },
+                    },
+                ];
+
+                let mut left_finger = 0_f64;
+                let mut right_finger = width;
+                for area in areas.drain(..) {
+                    let area_width: f64 = area.width.into();
+
+                    ctx.set_source_rgb(area.colour.red, area.colour.green, area.colour.blue);
+                    let (left, right) = match area.align {
+                        Align::Left => {
+                            let (left, right) = (left_finger, left_finger + area_width);
+                            left_finger += area_width;
+                            (left, right)
+                        }
+                        Align::Right => {
+                            let (left, right) = (right_finger - area_width, right_finger);
+                            right_finger -= area_width;
+                            (left, right)
+                        }
+                    };
+                    ctx.rectangle(left, 0_f64, right - left, height);
+                    ctx.fill();
+
+                    area_paints.push(Paint { left, right, area })
+                }
             }
             _ => (),
         }
