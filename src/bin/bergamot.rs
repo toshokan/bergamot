@@ -34,6 +34,15 @@ fn main() -> Result<(), Error> {
 	]
     );
 
+    let visp = screen
+	.allowed_depths()
+	.next()
+	.expect("No allowed depths")
+	.visuals()
+	.next()
+	.expect("No visuals")
+	.base;
+
     xcb::map_window(&conn, win);
     conn.flush();
     
