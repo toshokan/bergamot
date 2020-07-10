@@ -77,8 +77,15 @@ fn main() -> Result<(), Error> {
 
     let surface = cairo::XCBSurface::create(&ccon, &cwin, &cvis, 2560, 20)
         .expect("Failed to create cairo surface");
+    let ctx = cairo::Context::new(&surface);
 
     xcb::map_window(&conn, win);
+    conn.flush();
+
+    ctx.set_source_rgb(0.1, 0.1, 0.1);
+    ctx.rectangle(0.0, 0.0, 2560.0, 20.0);
+    ctx.fill();
+
     conn.flush();
 
     std::thread::sleep(std::time::Duration::from_secs(10));
