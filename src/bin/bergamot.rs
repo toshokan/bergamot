@@ -71,8 +71,8 @@ fn main() -> Result<(), Error> {
 
     let vp = &visp as *const xcb::ffi::xproto::xcb_visualtype_t as *mut cairo_sys::xcb_visualtype_t;
     let cp = conn.get_raw_conn() as *mut cairo_sys::xcb_connection_t;
-    let cvis = unsafe { cairo::XCBVisualType::from_raw_none(vp) };
-    let ccon = unsafe { cairo::XCBConnection::from_raw_none(cp) };
+    let cvis = unsafe { cairo::XCBVisualType::from_raw_borrow(vp) };
+    let ccon = unsafe { cairo::XCBConnection::from_raw_borrow(cp) };
     let cwin = cairo::XCBDrawable(win);
 
     let surface = cairo::XCBSurface::create(&ccon, &cwin, &cvis, 2560, 20)
