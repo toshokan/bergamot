@@ -26,15 +26,17 @@ fn main() -> Result<(), Error> {
         .expect("Failed to get screen");
     let win = conn.generate_id();
 
-    let (width, height) = (2560, 18);
+
+
+    let (width, height) = (screen.width_in_pixels(), 18);
 
     xcb::create_window(
         &conn,
         xcb::COPY_FROM_PARENT as u8,
         win,
         screen.root(),
-        1440,
-        700+14,
+	0,
+	20,
         width,
         height,
         0,
@@ -75,7 +77,7 @@ fn main() -> Result<(), Error> {
     let ccon = unsafe { cairo::XCBConnection::from_raw_borrow(cp) };
     let cwin = cairo::XCBDrawable(win);
 
-    let surface = cairo::XCBSurface::create(&ccon, &cwin, &cvis, 2560, 20)
+    let surface = cairo::XCBSurface::create(&ccon, &cwin, &cvis, width.into(), height.into())
         .expect("Failed to create cairo surface");
     let ctx = cairo::Context::new(&surface);
 
@@ -83,15 +85,15 @@ fn main() -> Result<(), Error> {
     conn.flush();
 
     while let Some(event) = conn.wait_for_event() {
-	match event.response_type() & !0x80 {
-	    xcb::EXPOSE => {
-		ctx.set_source_rgb(0.1, 0.1, 0.1);
-		ctx.rectangle(0.0, 0.0, 2560.0, 20.0);
-		ctx.fill();
-	    }
-	    _ => ()
-	}
-	conn.flush();
+        match event.response_type() & !0x80 {
+            xcb::EXPOSE => {
+                ctx.set_source_rgb(0.1, 0.1, 0.1);
+                ctx.rectangle(0.0, 0.0, width.into(), height.into());
+                ctx.fill();
+            }
+            _ => (),
+        }
+        conn.flush();
     }
 
     Ok(())
