@@ -43,6 +43,8 @@ fn main() -> Result<(), Error> {
 	.expect("No visuals")
 	.base;
 
+    
+
     xcb::map_window(&conn, win);
     conn.flush();
     
