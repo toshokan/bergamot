@@ -33,5 +33,9 @@ fn main() -> Result<(), Error> {
 	    (xcb::CW_BACK_PIXEL, screen.white_pixel()),
 	]
     );
+
+    xcb::map_window(&conn, win);
+    conn.flush();
+    
     Ok(())
 }
