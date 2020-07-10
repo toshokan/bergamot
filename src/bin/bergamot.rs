@@ -44,15 +44,15 @@ fn main() -> Result<(), Error> {
     );
 
     
-    if let [r1, r2] = &intern_atoms(&conn, &["_NET_WM_WINDOW_TYPE", "_NET_WM_WINDOW_TYPE_DOCK"])[..] {
+    if let [window_type, dock] = &intern_atoms(&conn, &["_NET_WM_WINDOW_TYPE", "_NET_WM_WINDOW_TYPE_DOCK"])[..] {
 	xcb::change_property(
 	    &conn,
 	    xcb::PROP_MODE_REPLACE as u8,
 	    win,
-	    r1.atom(),
+	    window_type.atom(),
 	    xcb::ATOM_ATOM,
 	    32,
-	    &[r2.atom()]
+	    &[dock.atom()]
 	);
     }
 
