@@ -43,7 +43,7 @@ fn main() -> Result<(), Error> {
 	.expect("No visuals")
 	.base;
 
-    
+    let vp = &visp as *const xcb::ffi::xproto::xcb_visualtype_t as *mut cairo_sys::xcb_visualtype_t;
 
     xcb::map_window(&conn, win);
     conn.flush();
