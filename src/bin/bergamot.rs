@@ -26,10 +26,11 @@ struct Rectangle {
 #[derive(Debug)]
 struct Area {
     align: Align,
-    width: u32,
     text: String,
     tag: String,
-    colour: Colour,
+    fg: Colour,
+    bg: Option<Colour>,
+    onclick: Option<String>
 }
 
 struct Paint {
@@ -128,35 +129,37 @@ fn main() -> Result<(), Error> {
 
                 let mut areas = vec![
                     Area {
-                        width: 100,
                         align: Align::Left,
                         tag: "left".to_string(),
                         text: "clicky".to_string(),
-                        colour: Colour {
+                        fg: Colour {
                             red: 1.0,
                             green: 0.0,
                             blue: 0.0,
                         },
+			bg: None,
+			onclick: None
                     },
                     Area {
-                        width: 100,
                         align: Align::Right,
                         tag: "left".to_string(),
                         text: "clicky".to_string(),
-                        colour: Colour {
+                        fg: Colour {
                             red: 0.0,
                             green: 0.0,
                             blue: 1.0,
                         },
+			bg: None,
+			onclick: None
                     },
                 ];
 
                 let mut left_finger = 0_f64;
                 let mut right_finger = width;
                 for area in areas.drain(..) {
-                    let area_width: f64 = area.width.into();
+                    let area_width: f64 = 100_f64;
 
-                    ctx.set_source_rgb(area.colour.red, area.colour.green, area.colour.blue);
+                    ctx.set_source_rgb(area.fg.red, area.fg.green, area.fg.blue);
                     let (left, right) = match area.align {
                         Align::Left => {
                             let (left, right) = (left_finger, left_finger + area_width);
