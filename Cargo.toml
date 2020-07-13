@@ -10,5 +10,6 @@ edition = "2018"
 xcb = "^0.9"
 cairo-rs = { version = "^0.9", features = ["xcb"] }
 cairo-sys-rs = "^0.10"
+pango = "^0.9"
 pangocairo = "^0.10"
 
