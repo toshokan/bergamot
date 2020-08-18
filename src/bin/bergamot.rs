@@ -1,12 +1,7 @@
-use bergamot::{error::Error, Area, Align, Paint, Colour};
-use bergamot::{
-    get_connection, get_screen, get_rectangles, create_output_windows
-};
-
+use bergamot::{create_output_windows, get_connection, get_rectangles, get_screen};
+use bergamot::{error::Error, Align, Area, Colour, Paint};
 
 fn main() -> Result<(), Error> {
-    use std::convert::TryInto;
-
     let bar_height = 16;
     let font = "monospace 9";
 

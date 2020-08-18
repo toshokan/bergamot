@@ -1,20 +1,20 @@
 pub mod error {
     #[derive(Debug)]
     pub enum Error {
-	XcbConn(xcb::base::ConnError),
-	XcbGeneric(xcb::base::GenericError),
+        XcbConn(xcb::base::ConnError),
+        XcbGeneric(xcb::base::GenericError),
     }
 
     impl From<xcb::base::ConnError> for Error {
-	fn from(e: xcb::base::ConnError) -> Self {
+        fn from(e: xcb::base::ConnError) -> Self {
             Self::XcbConn(e)
-	}
+        }
     }
 
     impl From<xcb::base::GenericError> for Error {
-	fn from(e: xcb::base::GenericError) -> Self {
+        fn from(e: xcb::base::GenericError) -> Self {
             Self::XcbGeneric(e)
-	}
+        }
     }
 }
 
@@ -60,21 +60,22 @@ pub struct Output {
     pub ctx: cairo::Context,
 }
 
-
 pub fn get_connection() -> Result<xcb::Connection, error::Error> {
     let (conn, _) = xcb::Connection::connect(None)?;
     Ok(conn)
 }
 
 pub fn get_screen(conn: &'_ xcb::Connection) -> xcb::Screen<'_> {
-    conn
-        .get_setup()
+    conn.get_setup()
         .roots()
         .next()
         .expect("Failed to get screen")
 }
 
-pub fn get_rectangles(conn: &xcb::Connection, screen: &xcb::Screen<'_>) -> Result<Vec<Rectangle>, error::Error> {
+pub fn get_rectangles(
+    conn: &xcb::Connection,
+    screen: &xcb::Screen<'_>,
+) -> Result<Vec<Rectangle>, error::Error> {
     let present = xcb::xproto::query_extension(conn, "RANDR")
         .get_reply()?
         .present();
@@ -126,10 +127,14 @@ fn intern_atoms(conn: &'_ xcb::Connection, names: &[&str]) -> Vec<xcb::InternAto
         .collect()
 }
 
-
-pub fn create_output_windows(conn: &xcb::Connection, screen: &xcb::Screen<'_>, bar_height: i32, rectangles: Vec<Rectangle>) -> Vec<Output> {
+pub fn create_output_windows(
+    conn: &xcb::Connection,
+    screen: &xcb::Screen<'_>,
+    bar_height: i32,
+    rectangles: Vec<Rectangle>,
+) -> Vec<Output> {
     use std::convert::TryInto;
-    
+
     let mut outputs = Vec::new();
 
     for rectangle in rectangles {
@@ -187,7 +192,7 @@ pub fn create_output_windows(conn: &xcb::Connection, screen: &xcb::Screen<'_>, b
 
         let surface =
             cairo::XCBSurface::create(&ccon, &cwin, &cvis, rectangle.width, rectangle.height)
-            .expect("Failed to create cairo surface");
+                .expect("Failed to create cairo surface");
         let ctx = cairo::Context::new(&surface);
 
         xcb::map_window(&conn, win);
