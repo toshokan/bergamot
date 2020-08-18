@@ -1,114 +1,8 @@
-#[derive(Debug)]
-enum Error {
-    XcbConn(xcb::base::ConnError),
-    XcbGeneric(xcb::base::GenericError),
-}
+use bergamot::{error::Error, Area, Align, Paint, Colour};
+use bergamot::{
+    get_connection, get_screen, get_rectangles, create_output_windows
+};
 
-impl From<xcb::base::ConnError> for Error {
-    fn from(e: xcb::base::ConnError) -> Self {
-        Self::XcbConn(e)
-    }
-}
-
-impl From<xcb::base::GenericError> for Error {
-    fn from(e: xcb::base::GenericError) -> Self {
-        Self::XcbGeneric(e)
-    }
-}
-
-fn intern_atoms(conn: &'_ xcb::Connection, names: &[&str]) -> Vec<xcb::InternAtomReply> {
-    names
-        .iter()
-        .map(|n| xcb::intern_atom(&conn, false, n))
-        .map(|c| c.get_reply().expect("Bad reply"))
-        .collect()
-}
-
-#[derive(Debug)]
-struct Area {
-    align: Align,
-    text: String,
-    tag: String,
-    fg: Colour,
-    bg: Option<Colour>,
-    onclick: Option<String>,
-}
-
-struct Paint {
-    left: f64,
-    right: f64,
-    area: Area,
-}
-
-#[derive(Debug)]
-enum Align {
-    Left,
-    Right,
-}
-
-#[derive(Debug)]
-struct Colour {
-    red: f64,
-    green: f64,
-    blue: f64,
-}
-
-#[derive(Debug)]
-struct Rectangle {
-    x: i32,
-    y: i32,
-    width: i32,
-    height: i32,
-}
-
-fn get_randr_info(conn: &xcb::Connection, root: &xcb::Window) -> Result<Vec<Rectangle>, Error> {
-    let present = xcb::xproto::query_extension(conn, "RANDR")
-        .get_reply()?
-        .present();
-
-    if !present {
-        unimplemented!("RANDR must be present");
-    }
-
-    let resources = xcb::randr::get_screen_resources_current(&conn, *root).get_reply()?;
-
-    let outputs = resources.outputs();
-
-    let mut crtcs = Vec::new();
-
-    for output in outputs {
-        let info = xcb::randr::get_output_info(&conn, *output, xcb::CURRENT_TIME).get_reply()?;
-
-        if info.crtc() == xcb::base::NONE
-            || Into::<u32>::into(info.connection()) == xcb::randr::CONNECTION_DISCONNECTED
-        {
-            continue;
-        } else {
-            let cookie = xcb::randr::get_crtc_info(&conn, info.crtc(), xcb::CURRENT_TIME);
-            crtcs.push(cookie);
-        }
-    }
-
-    let mut rectangles = Vec::new();
-
-    for crtc in crtcs {
-        let info = crtc.get_reply()?;
-        let rect = Rectangle {
-            x: info.x().into(),
-            y: info.y().into(),
-            width: info.width().into(),
-            height: info.height().into(),
-        };
-        rectangles.push(rect);
-    }
-
-    Ok(rectangles)
-}
-
-struct Output {
-    rect: Rectangle,
-    ctx: cairo::Context,
-}
 
 fn main() -> Result<(), Error> {
     use std::convert::TryInto;
@@ -116,82 +10,10 @@ fn main() -> Result<(), Error> {
     let bar_height = 16;
     let font = "monospace 9";
 
-    let (conn, _) = xcb::Connection::connect(None)?;
-    let screen = conn
-        .get_setup()
-        .roots()
-        .next()
-        .expect("Failed to get screen");
-
-    let rectangles = get_randr_info(&conn, &screen.root())?;
-    let mut outputs = Vec::new();
-
-    for rectangle in rectangles {
-        let win = conn.generate_id();
-
-        let y: i16 = rectangle.y.try_into().unwrap();
-
-        xcb::create_window(
-            &conn,
-            xcb::COPY_FROM_PARENT as u8,
-            win,
-            screen.root(),
-            rectangle.x.try_into().unwrap(),
-            30 + y,
-            rectangle.width.try_into().unwrap(),
-            bar_height,
-            0,
-            xcb::WINDOW_CLASS_INPUT_OUTPUT as u16,
-            screen.root_visual(),
-            &[
-                (xcb::CW_BACK_PIXEL, screen.white_pixel()),
-                (xcb::CW_EVENT_MASK, xcb::EVENT_MASK_EXPOSURE),
-            ],
-        );
-
-        if let [window_type, dock] =
-            &intern_atoms(&conn, &["_NET_WM_WINDOW_TYPE", "_NET_WM_WINDOW_TYPE_DOCK"])[..]
-        {
-            xcb::change_property(
-                &conn,
-                xcb::PROP_MODE_REPLACE as u8,
-                win,
-                window_type.atom(),
-                xcb::ATOM_ATOM,
-                32,
-                &[dock.atom()],
-            );
-        }
-
-        let visp = screen
-            .allowed_depths()
-            .next()
-            .expect("No allowed depths")
-            .visuals()
-            .next()
-            .expect("No visuals")
-            .base;
-
-        let vp = &visp as *const _ as *mut _;
-        let cp = conn.get_raw_conn() as *mut _;
-
-        let cvis = unsafe { cairo::XCBVisualType::from_raw_borrow(vp) };
-        let ccon = unsafe { cairo::XCBConnection::from_raw_borrow(cp) };
-        let cwin = cairo::XCBDrawable(win);
-
-        let surface =
-            cairo::XCBSurface::create(&ccon, &cwin, &cvis, rectangle.width, rectangle.height)
-                .expect("Failed to create cairo surface");
-        let ctx = cairo::Context::new(&surface);
-
-        xcb::map_window(&conn, win);
-
-        outputs.push(Output {
-            rect: rectangle,
-            ctx,
-        })
-    }
-
+    let conn = get_connection()?;
+    let screen = get_screen(&conn);
+    let rectangles = get_rectangles(&conn, &screen)?;
+    let windows = create_output_windows(&conn, &screen, bar_height, rectangles);
     conn.flush();
 
     let mut area_paints = vec![];
@@ -201,7 +23,7 @@ fn main() -> Result<(), Error> {
             xcb::EXPOSE => {
                 let font = pango::FontDescription::from_string(font);
 
-                for output in &outputs {
+                for output in &windows {
                     output.ctx.set_source_rgb(0.1, 0.1, 0.1);
                     output.ctx.rectangle(
                         0.0,
