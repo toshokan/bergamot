@@ -104,8 +104,8 @@ fn main() -> Result<(), Error> {
         .expect("No visuals")
         .base;
 
-    let vp = &visp as *const xcb::ffi::xproto::xcb_visualtype_t as *mut cairo_sys::xcb_visualtype_t;
-    let cp = conn.get_raw_conn() as *mut cairo_sys::xcb_connection_t;
+    let vp = unsafe { std::mem::transmute(&visp) };
+    let cp = unsafe { std::mem::transmute(&conn.get_raw_conn()) };
     let cvis = unsafe { cairo::XCBVisualType::from_raw_borrow(vp) };
     let ccon = unsafe { cairo::XCBConnection::from_raw_borrow(cp) };
     let cwin = cairo::XCBDrawable(win);
