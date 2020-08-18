@@ -1,11 +1,18 @@
 #[derive(Debug)]
 enum Error {
     XcbConn(xcb::base::ConnError),
+    XcbGeneric(xcb::base::GenericError)
 }
 
 impl From<xcb::base::ConnError> for Error {
     fn from(e: xcb::base::ConnError) -> Self {
         Self::XcbConn(e)
+    }
+}
+
+impl From<xcb::base::GenericError> for Error {
+    fn from(e: xcb::base::GenericError) -> Self {
+        Self::XcbGeneric(e)
     }
 }
 
@@ -54,50 +61,45 @@ struct Rectangle {
     height: i32,
 }
 
-fn get_randr_info(conn: &xcb::Connection, root: &xcb::Window) -> Result<Vec<Rectangle>, ()> {
+fn get_randr_info(conn: &xcb::Connection, root: &xcb::Window) -> Result<Vec<Rectangle>, Error> {
     let present = xcb::xproto::query_extension(conn, "RANDR")
-        .get_reply()
-        .map_err(|_| ())?
+        .get_reply()?
         .present();
-    let rectangles = if present {
-        let resources = xcb::randr::get_screen_resources_current(&conn, *root)
-            .get_reply()
-	    .map_err(|_| ())?;
-	
-	let outputs = resources.outputs();
 
-	let mut crtcs = Vec::new();
+    if !present {
+	unimplemented!("RANDR must be present");
+    }
+    
+    let resources = xcb::randr::get_screen_resources_current(&conn, *root)
+        .get_reply()?;
+    
+    let outputs = resources.outputs();
 
-	for output in outputs {
-	    let info = xcb::randr::get_output_info(&conn, *output, xcb::CURRENT_TIME).get_reply()
-    		.map_err(|_| ())?;
+    let mut crtcs = Vec::new();
 
-	    if info.crtc() == xcb::base::NONE || Into::<u32>::into(info.connection()) == xcb::randr::CONNECTION_DISCONNECTED {
-		continue;
-	    } else {
-		let cookie = xcb::randr::get_crtc_info(&conn, info.crtc(), xcb::CURRENT_TIME);
-		crtcs.push(cookie);
-	    }
+    for output in outputs {
+	let info = xcb::randr::get_output_info(&conn, *output, xcb::CURRENT_TIME).get_reply()?;
+
+	if info.crtc() == xcb::base::NONE || Into::<u32>::into(info.connection()) == xcb::randr::CONNECTION_DISCONNECTED {
+	    continue;
+	} else {
+	    let cookie = xcb::randr::get_crtc_info(&conn, info.crtc(), xcb::CURRENT_TIME);
+	    crtcs.push(cookie);
 	}
+    }
 
-	let mut rectangles = Vec::new();
+    let mut rectangles = Vec::new();
 
-	for crtc in crtcs {
-	    let info = crtc.get_reply().map_err(|_| ())?;
-	    let rect = Rectangle {
-		x: info.x().into(),
-		y: info.y().into(),
-		width: info.width().into(),
-		height: info.height().into()
-	    };
-	    rectangles.push(rect);
-	}
-	rectangles
-    } else {
-	unimplemented!()
-    };
-
-    dbg!(&rectangles);
+    for crtc in crtcs {
+	let info = crtc.get_reply()?;
+	let rect = Rectangle {
+	    x: info.x().into(),
+	    y: info.y().into(),
+	    width: info.width().into(),
+	    height: info.height().into()
+	};
+	rectangles.push(rect);
+    }
     
     Ok(rectangles)
 }
@@ -109,6 +111,9 @@ struct Output {
 
 fn main() -> Result<(), Error> {
     use std::convert::TryInto;
+
+    let bar_height = 16;
+    let font = "monospace 9";
     
     let (conn, _) = xcb::Connection::connect(None)?;
     let screen = conn
@@ -117,7 +122,7 @@ fn main() -> Result<(), Error> {
         .next()
         .expect("Failed to get screen");
 
-    let rectangles = get_randr_info(&conn, &screen.root()).expect("Error getting rectangles");
+    let rectangles = get_randr_info(&conn, &screen.root())?;
     let mut outputs = Vec::new();
 
     for rectangle in rectangles {
@@ -133,7 +138,7 @@ fn main() -> Result<(), Error> {
             rectangle.x.try_into().unwrap(),
             30 + y,
             rectangle.width.try_into().unwrap(),
-            24,
+            bar_height,
             0,
             xcb::WINDOW_CLASS_INPUT_OUTPUT as u16,
             screen.root_visual(),
@@ -194,7 +199,7 @@ fn main() -> Result<(), Error> {
     while let Some(event) = conn.wait_for_event() {
         match event.response_type() & !0x80 {
             xcb::EXPOSE => {
-                let font = pango::FontDescription::from_string("monospace 12");
+                let font = pango::FontDescription::from_string(font);
 
 		for output in &outputs {
                     output.ctx.set_source_rgb(0.1, 0.1, 0.1);
@@ -246,8 +251,6 @@ fn main() -> Result<(), Error> {
                             green: 0_f64,
 			});
 
-			let height = 24_f64;// output.rect.height.into();
-
 			output.ctx.set_source_rgb(bg.red, bg.green, bg.blue);
 			let (left, right) = match area.align {
                             Align::Left => {
@@ -261,6 +264,9 @@ fn main() -> Result<(), Error> {
 				(left, right)
                             }
 			};
+
+			let height = bar_height.into();
+			
 			output.ctx.rectangle(left, 0_f64, right - left, height);
 			output.ctx.fill();
 
