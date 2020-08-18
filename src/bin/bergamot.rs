@@ -18,12 +18,6 @@ fn intern_atoms(conn: &'_ xcb::Connection, names: &[&str]) -> Vec<xcb::InternAto
 }
 
 #[derive(Debug)]
-struct Rectangle {
-    start: u32,
-    stop: u32,
-}
-
-#[derive(Debug)]
 struct Area {
     align: Align,
     text: String,
@@ -52,6 +46,48 @@ struct Colour {
     blue: f64,
 }
 
+#[derive(Debug)]
+struct Rectangle {
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+}
+
+fn get_randr_info(conn: &xcb::Connection, root: &xcb::Window) -> Result<Vec<Rectangle>, ()> {
+    let present = xcb::xproto::query_extension(conn, "RANDR")
+        .get_reply()
+        .map_err(|_| ())?
+        .present();
+    let rectangles = if present {
+        xcb::randr::get_screen_resources_current(&conn, *root)
+            .get_reply()
+	    .map_err(|_| ())?
+            .crtcs()
+            .iter()
+            .map(|crtc| xcb::randr::get_crtc_info(&conn, *crtc, xcb::CURRENT_TIME))
+            .map(|cookie| {
+		cookie.get_reply().map_err(|_| ())
+	    })
+            .filter_map(Result::ok)
+            .map(|info| {
+		Rectangle {
+		    x: info.x().into(),
+		    y: info.y().into(),
+		    width: info.width().into(),
+		    height: info.height().into()
+		}
+	    })
+            .collect()
+    } else {
+	unimplemented!()
+    };
+
+    dbg!(&rectangles);
+    
+    Ok(rectangles)
+}
+
 fn main() -> Result<(), Error> {
     let (conn, _) = xcb::Connection::connect(None)?;
     let screen = conn
@@ -61,6 +97,8 @@ fn main() -> Result<(), Error> {
         .expect("Failed to get screen");
     let win = conn.generate_id();
 
+    get_randr_info(&conn, &screen.root());
+
     let (width, height) = (screen.width_in_pixels(), 18);
 
     xcb::create_window(
@@ -69,7 +107,7 @@ fn main() -> Result<(), Error> {
         win,
         screen.root(),
         0,
-        20,
+        900,
         width,
         height,
         0,
@@ -161,18 +199,18 @@ fn main() -> Result<(), Error> {
                 for area in areas.drain(..) {
                     let layout = pangocairo::create_layout(&ctx)
                         .expect("Failed to create pangocairo layout");
-		    layout.set_font_description(Some(&font));
-		    layout.set_text(&area.text);
+                    layout.set_font_description(Some(&font));
+                    layout.set_text(&area.text);
 
-		    let (w, h) = layout.get_pixel_size();
-		    let area_width: f64 = (w + 10).into();
-		    let layout_height: f64 = h.into();
+                    let (w, h) = layout.get_pixel_size();
+                    let area_width: f64 = (w + 10).into();
+                    let layout_height: f64 = h.into();
 
-		    let bg = area.bg.as_ref().unwrap_or(&Colour {
-			red: 0_f64,
-			blue: 0_f64,
-			green: 0_f64
-		    });
+                    let bg = area.bg.as_ref().unwrap_or(&Colour {
+                        red: 0_f64,
+                        blue: 0_f64,
+                        green: 0_f64,
+                    });
 
                     ctx.set_source_rgb(bg.red, bg.green, bg.blue);
                     let (left, right) = match area.align {
@@ -188,11 +226,11 @@ fn main() -> Result<(), Error> {
                         }
                     };
                     ctx.rectangle(left, 0_f64, right - left, height);
-		    ctx.fill();
+                    ctx.fill();
 
-		    ctx.set_source_rgb(area.fg.red, area.fg.green, area.fg.blue);
-		    ctx.move_to(left + 5_f64, height/2_f64 - layout_height/2_f64);
-		    pangocairo::show_layout(&ctx, &layout);
+                    ctx.set_source_rgb(area.fg.red, area.fg.green, area.fg.blue);
+                    ctx.move_to(left + 5_f64, height / 2_f64 - layout_height / 2_f64);
+                    pangocairo::show_layout(&ctx, &layout);
 
                     area_paints.push(Paint { left, right, area })
                 }
