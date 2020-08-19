@@ -8,36 +8,6 @@ struct Config {
     bg: Colour,
 }
 
-fn get_layout() -> Option<Vec<Area>> {
-    let areas = vec![
-        Area {
-            align: Align::Left,
-            tag: "left".to_string(),
-            text: "clicky_left".to_string(),
-            fg: Colour {
-                red: 1.0,
-                green: 0.0,
-                blue: 0.0,
-            },
-            bg: None,
-            onclick: Some("left".to_string()),
-        },
-        Area {
-            align: Align::Right,
-            tag: "left".to_string(),
-            text: "clicky_right".to_string(),
-            fg: Colour {
-                red: 0.0,
-                green: 0.0,
-                blue: 1.0,
-            },
-            bg: None,
-            onclick: Some("right".to_string()),
-        },
-    ];
-    Some(areas)
-}
-
 fn display(cfg: &Config, outputs: &[Output], areas: &[Area]) -> Vec<Paint> {
     let mut area_paints = vec![];
     let font = pango::FontDescription::from_string(&cfg.font_str);
@@ -127,7 +97,7 @@ fn main() -> Result<(), Error> {
     let (tx, rx) = channel();
 
     let conn = Arc::new(conn);
-    let layout = Arc::new(Mutex::new(get_layout().unwrap()));
+    let layout = Arc::new(Mutex::new(Vec::new()));
     let paints = Arc::new(Mutex::new(Vec::new()));
 
     let _stdin_handle = {
@@ -145,13 +115,16 @@ fn main() -> Result<(), Error> {
 		match stdin.read_line(&mut buf) {
 		    Ok(0) => break,
 		    Ok(_) => {
-			dbg!(&buf);
-			let new_layout = get_layout().unwrap();
-			let mut layout = layout.lock().unwrap();
-			let _ = std::mem::replace(&mut *layout, new_layout);
-			buf.clear();
+			let value: Result<Vec<Area>, _> = serde_json::from_str(&buf);
+			if let Ok(new_layout) = value {
+			    let mut layout = layout.lock().unwrap();
+			    let _ = std::mem::replace(&mut *layout, new_layout);
+			    buf.clear();
 
-			tx.send(()).unwrap();
+			    tx.send(()).unwrap();
+			} else {
+			    eprintln!("{:?}", value);
+			}
 		    },
 		    _ => break,
 		}

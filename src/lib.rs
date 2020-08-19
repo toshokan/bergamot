@@ -18,6 +18,7 @@ pub mod error {
     }
 }
 
+#[derive(serde::Deserialize)]
 #[derive(Debug, Clone)]
 pub struct Area {
     pub align: Align,
@@ -35,12 +36,14 @@ pub struct Paint {
     pub area: Area,
 }
 
+#[derive(serde::Deserialize)]
 #[derive(Debug, Clone)]
 pub enum Align {
     Left,
     Right,
 }
 
+#[derive(serde::Deserialize)]
 #[derive(Debug, Clone)]
 pub struct Colour {
     pub red: f64,
