@@ -133,24 +133,20 @@ pub fn create_output_windows(
     bar_height: i32,
     rectangles: Vec<Rectangle>,
 ) -> Vec<Output> {
-    use std::convert::TryInto;
-
     let mut outputs = Vec::new();
 
     for rectangle in rectangles {
         let win = conn.generate_id();
-
-        let y: i16 = rectangle.y.try_into().unwrap();
 
         xcb::create_window(
             &conn,
             xcb::COPY_FROM_PARENT as u8,
             win,
             screen.root(),
-            rectangle.x.try_into().unwrap(),
-            30 + y,
-            rectangle.width.try_into().unwrap(),
-            bar_height.try_into().unwrap(),
+            rectangle.x as i16,
+            (rectangle.y as i16) + 30,
+            rectangle.width as u16,
+            bar_height as u16,
             0,
             xcb::WINDOW_CLASS_INPUT_OUTPUT as u16,
             screen.root_visual(),

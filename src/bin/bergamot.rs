@@ -1,14 +1,25 @@
 use bergamot::{create_output_windows, get_connection, get_rectangles, get_screen};
 use bergamot::{error::Error, Align, Area, Colour, Paint};
 
+struct Config {
+    height: u32,
+    font_str: String,
+    bg: Colour,
+}
+
 fn main() -> Result<(), Error> {
-    let bar_height = 16;
-    let font = "monospace 9";
+    let cfg = Config {
+	height: 16,
+	font_str: "monospace 9".to_string(),
+	bg: Colour {
+	    red: 0.1, blue: 0.1, green: 0.1
+	}
+    };
 
     let conn = get_connection()?;
     let screen = get_screen(&conn);
     let rectangles = get_rectangles(&conn, &screen)?;
-    let windows = create_output_windows(&conn, &screen, bar_height, rectangles);
+    let windows = create_output_windows(&conn, &screen, *&cfg.height as i32, rectangles);
     conn.flush();
 
     let mut area_paints = vec![];
@@ -16,7 +27,7 @@ fn main() -> Result<(), Error> {
     while let Some(event) = conn.wait_for_event() {
         match event.response_type() & !0x80 {
             xcb::EXPOSE => {
-                let font = pango::FontDescription::from_string(font);
+                let font = pango::FontDescription::from_string(&cfg.font_str);
 
                 for output in &windows {
                     output.ctx.set_source_rgb(0.1, 0.1, 0.1);
@@ -87,7 +98,7 @@ fn main() -> Result<(), Error> {
                             }
                         };
 
-                        let height = bar_height.into();
+                        let height = cfg.height.into();
 
                         output.ctx.rectangle(left, 0_f64, right - left, height);
                         output.ctx.fill();
