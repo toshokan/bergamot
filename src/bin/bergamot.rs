@@ -1,6 +1,6 @@
 use bergamot::{create_output_windows, get_connection, get_rectangles, get_screen};
 use bergamot::{error::Error, Align, Area, Colour, Output, Paint};
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc::channel, Arc, Mutex};
 
 struct Config {
     height: u32,
@@ -121,13 +121,18 @@ fn main() -> Result<(), Error> {
     let screen = get_screen(&conn);
     let rectangles = get_rectangles(&conn, &screen)?;
     let windows = create_output_windows(&conn, &screen, cfg.height as i32, rectangles);
-    conn.flush();
 
-    let mut layout = Arc::new(Mutex::new(get_layout().unwrap()));
-    let mut paints = Vec::new();
+    conn.0.flush();
 
-    let handle = {
+    let (tx, rx) = channel();
+
+    let conn = Arc::new(conn);
+    let layout = Arc::new(Mutex::new(get_layout().unwrap()));
+    let paints = Arc::new(Mutex::new(Vec::new()));
+
+    let _stdin_handle = {
 	let layout = Arc::clone(&layout);
+	let tx = tx.clone();
 	std::thread::spawn(move || {
 	    use std::io::BufRead;
 	    
@@ -139,12 +144,14 @@ fn main() -> Result<(), Error> {
 	    loop {
 		match stdin.read_line(&mut buf) {
 		    Ok(0) => break,
-		    Ok(b) => {
+		    Ok(_) => {
 			dbg!(&buf);
 			let new_layout = get_layout().unwrap();
 			let mut layout = layout.lock().unwrap();
-			std::mem::replace(&mut *layout, new_layout);
+			let _ = std::mem::replace(&mut *layout, new_layout);
 			buf.clear();
+
+			tx.send(()).unwrap();
 		    },
 		    _ => break,
 		}
@@ -152,31 +159,49 @@ fn main() -> Result<(), Error> {
 	})
     };
 
-    while let Some(event) = conn.wait_for_event() {
-        match event.response_type() & !0x80 {
-            xcb::EXPOSE => {
+    let _draw_handle = {
+	let conn = Arc::clone(&conn);
+	let layout = Arc::clone(&layout);
+	let paints = Arc::clone(&paints);
+	std::thread::spawn(move || {
+	    while let Ok(_) = rx.recv() {
 		let layout = layout.lock().unwrap();
-		paints = display(&cfg, &windows, &layout);
-            }
+		let new_paints = display(&cfg, &windows, &layout);
+		conn.flush();
+		let mut paints = paints.lock().unwrap();
+		let _ = std::mem::replace(&mut *paints, new_paints);
+	    }
+	})
+    };
+
+    while let Some(event) = conn.0.wait_for_event() {
+	match event.response_type() & !0x80 {
+	    xcb::EXPOSE => {
+		tx.send(()).unwrap();
+	    }
 	    xcb::BUTTON_PRESS => {
 		let event: &xcb::ButtonPressEvent = unsafe { xcb::cast_event(&event) };
 		let win = event.event();
 		let x = event.event_x().into();
 
+		let paints = paints
+		    .lock()
+		    .unwrap();
+		
 		let paint = paints
 		    .iter()
-		    .filter(|p| p.win == win && p.left <= x && p.right >= x)
+		    .filter(|p: &&Paint| p.win == win && p.left <= x && p.right >= x)
 		    .min_by(|p1, p2| (p1.right - p1.left).partial_cmp(&(p2.right - p2.left)).unwrap());
 
 		if let Some(p) = paint {
 		    if let Some(cmd) = &p.area.onclick {
-			eprintln!("{}", cmd);
+			println!("{}", cmd);
 		    }
 		}
 	    }
-            _ => (),
-        }
-        conn.flush();
+	    _ => (),
+	}
+	conn.0.flush();
     }
 
     Ok(())
