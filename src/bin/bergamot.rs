@@ -19,7 +19,7 @@ fn main() -> Result<(), Error> {
     let conn = get_connection()?;
     let screen = get_screen(&conn);
     let rectangles = get_rectangles(&conn, &screen)?;
-    let windows = create_output_windows(&conn, &screen, *&cfg.height as i32, rectangles);
+    let windows = create_output_windows(&conn, &screen, cfg.height as i32, rectangles);
     conn.flush();
 
     let mut area_paints = vec![];
@@ -30,7 +30,7 @@ fn main() -> Result<(), Error> {
                 let font = pango::FontDescription::from_string(&cfg.font_str);
 
                 for output in &windows {
-                    output.ctx.set_source_rgb(0.1, 0.1, 0.1);
+                    output.ctx.set_source_rgb(cfg.bg.red, cfg.bg.blue, cfg.bg.green);
                     output.ctx.rectangle(
                         0.0,
                         0.0,
