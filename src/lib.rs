@@ -18,7 +18,7 @@ pub mod error {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Area {
     pub align: Align,
     pub text: String,
@@ -31,16 +31,17 @@ pub struct Area {
 pub struct Paint {
     pub left: f64,
     pub right: f64,
+    pub win: xcb::Window,
     pub area: Area,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Align {
     Left,
     Right,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Colour {
     pub red: f64,
     pub green: f64,
@@ -57,6 +58,7 @@ pub struct Rectangle {
 
 pub struct Output {
     pub rect: Rectangle,
+    pub win: xcb::Window,
     pub ctx: cairo::Context,
 }
 
@@ -79,7 +81,7 @@ pub fn get_rectangles(
     let present = xcb::xproto::query_extension(conn, "RANDR")
         .get_reply()?
         .present();
-
+    
     if !present {
         unimplemented!("RANDR must be present");
     }
@@ -152,7 +154,7 @@ pub fn create_output_windows(
             screen.root_visual(),
             &[
                 (xcb::CW_BACK_PIXEL, screen.white_pixel()),
-                (xcb::CW_EVENT_MASK, xcb::EVENT_MASK_EXPOSURE),
+                (xcb::CW_EVENT_MASK, xcb::EVENT_MASK_EXPOSURE | xcb::EVENT_MASK_BUTTON_PRESS),
             ],
         );
 
@@ -195,6 +197,7 @@ pub fn create_output_windows(
 
         outputs.push(Output {
             rect: rectangle,
+	    win,
             ctx,
         })
     }
