@@ -8,6 +8,30 @@ struct Config {
     bg: Colour,
 }
 
+#[derive(Debug)]
+struct Layout {
+    pango_layout: pango::Layout,
+    width: f64,
+    height: f64,
+}
+
+fn create_layout(output: &Output, area: &Area, font: &pango::FontDescription) -> Layout {
+    let layout = pangocairo::create_layout(&output.ctx)
+        .expect("Failed to create pangocairo layout");
+    layout.set_font_description(Some(&font));
+    layout.set_text(&area.text);
+
+    let (w, h) = layout.get_pixel_size();
+    let area_width: f64 = (w + 10).into();
+    let layout_height: f64 = h.into();
+    
+    Layout {
+	pango_layout: layout,
+	width: area_width,
+	height: layout_height
+    }
+}
+
 fn display(cfg: &Config, outputs: &[Output], areas: &[Area]) -> Vec<Paint> {
     let mut area_paints = vec![];
     let font = pango::FontDescription::from_string(&cfg.font_str);
