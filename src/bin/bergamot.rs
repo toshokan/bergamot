@@ -36,6 +36,8 @@ fn display(cfg: &Config, outputs: &[Output], areas: &[Area]) -> Vec<Paint> {
     let mut area_paints = vec![];
     let font = pango::FontDescription::from_string(&cfg.font_str);
 
+    let (centered_areas, other_areas): (Vec<&Area>, Vec<&Area>) = areas.iter().partition(|a| a.align.is_center());
+
     for output in outputs {
         output
             .ctx
@@ -50,16 +52,14 @@ fn display(cfg: &Config, outputs: &[Output], areas: &[Area]) -> Vec<Paint> {
 
         let mut left_finger = 0_f64;
         let mut right_finger = output.rect.width.into();
-	
-        for area in areas {
-            let layout = pangocairo::create_layout(&output.ctx)
-                .expect("Failed to create pangocairo layout");
-            layout.set_font_description(Some(&font));
-            layout.set_text(&area.text);
 
-            let (w, h) = layout.get_pixel_size();
-            let area_width: f64 = (w + 10).into();
-            let layout_height: f64 = h.into();
+	let centered_areas: Vec<(&&Area, Layout)> = centered_areas.iter().map(|a| (a, create_layout(output, a, &font))).collect();
+	let other_areas: Vec<(&&Area, Layout)> = other_areas.iter().map(|a| (a, create_layout(output, a, &font))).collect();
+
+	let center_width: f64 = centered_areas.iter().map(|(_, l)| l.width).sum();
+	let mut center_finger = (output.rect.width / 2) as f64 - center_width;
+
+        for (area, layout) in other_areas.iter().chain(centered_areas.iter()) {
 
             let bg = area.bg.as_ref().unwrap_or(&Colour {
                 red: 0_f64,
@@ -70,15 +70,21 @@ fn display(cfg: &Config, outputs: &[Output], areas: &[Area]) -> Vec<Paint> {
             output.ctx.set_source_rgb(bg.red, bg.green, bg.blue);
             let (left, right) = match area.align {
                 Align::Left => {
-                    let (left, right) = (left_finger, left_finger + area_width);
-                    left_finger += area_width;
+                    let (left, right) = (left_finger, left_finger + layout.width);
+                    left_finger += layout.width;
                     (left, right)
-                }
+                },
                 Align::Right => {
-                    let (left, right) = (right_finger - area_width, right_finger);
-                    right_finger -= area_width;
+                    let (left, right) = (right_finger - layout.width, right_finger);
+                    right_finger -= layout.width;
                     (left, right)
-                }
+                },
+		// These are done after all other areas so they can overwrite previously painted areas.
+		Align::Center => {
+		    let (left, right) = (center_finger, center_finger + layout.width);
+		    center_finger += layout.width;
+		    (left, right)
+		}
             };
 
             let height = cfg.height.into();
@@ -91,11 +97,12 @@ fn display(cfg: &Config, outputs: &[Output], areas: &[Area]) -> Vec<Paint> {
                 .set_source_rgb(area.fg.red, area.fg.green, area.fg.blue);
             output
                 .ctx
-                .move_to(left + 5_f64, height / 2_f64 - layout_height / 2_f64);
-            pangocairo::show_layout(&output.ctx, &layout);
+                .move_to(left + 5_f64, height / 2_f64 - layout.height / 2_f64);
+            pangocairo::show_layout(&output.ctx, &layout.pango_layout);
 
-            area_paints.push(Paint { left, right, win: output.win, area: area.clone() })
+            area_paints.push(Paint { left, right, win: output.win, area: (**area).clone() })
         }
+	
     }
     area_paints
 }

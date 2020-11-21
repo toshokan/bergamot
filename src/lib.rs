@@ -38,9 +38,20 @@ pub struct Paint {
 
 #[derive(serde::Deserialize)]
 #[derive(Debug, Clone)]
+#[serde(rename_all = "lowercase")]
 pub enum Align {
     Left,
+    Center,
     Right,
+}
+
+impl Align {
+    pub fn is_center(&self) -> bool {
+	match self {
+	    Align::Center => true,
+	    _ => false
+	}
+    }
 }
 
 #[derive(serde::Deserialize)]
