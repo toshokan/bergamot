@@ -26,7 +26,9 @@ pub struct Area {
     pub tag: String,
     pub fg: Colour,
     pub bg: Option<Colour>,
-    pub onclick: Option<String>,
+    pub on_click: Option<String>,
+    pub on_middle_click: Option<String>,
+    pub on_right_click: Option<String>,
 }
 
 pub struct Paint {

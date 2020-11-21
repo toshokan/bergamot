@@ -197,8 +197,17 @@ fn main() -> Result<(), Error> {
 		    .filter(|p: &&Paint| p.win == win && p.left <= x && p.right >= x)
 		    .min_by(|p1, p2| (p1.right - p1.left).partial_cmp(&(p2.right - p2.left)).unwrap());
 
+
 		if let Some(p) = paint {
-		    if let Some(cmd) = &p.area.onclick {
+		    let button = event.detail();
+		    let cmd = match button {
+			1 => &p.area.on_click,
+			2 => &p.area.on_middle_click,
+			3 => &p.area.on_right_click,
+			_ => &None,
+		    };
+		    
+		    if let Some(cmd) = cmd {
 			println!("{}", cmd);
 		    }
 		}
