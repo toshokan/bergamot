@@ -1,9 +1,7 @@
-use bergamot::Context;
 use bergamot::{
-    create_output_windows, get_connection, get_rectangles, get_screen, Command, Cursors, Draw,
-    Layout, Update, Widget,
+    create_output_windows, error::Error, get_connection, get_rectangles, get_screen, Colour,
+    Command, Context, Cursors, Draw, Layout, Paint, Update, Widget,
 };
-use bergamot::{error::Error, Colour, Paint};
 use std::sync::{mpsc::channel, Arc, Mutex};
 
 struct Config {
