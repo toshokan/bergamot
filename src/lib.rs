@@ -86,7 +86,9 @@ impl Colour {
 
 #[derive(serde::Deserialize, Debug, Clone, Copy)]
 pub struct Colours {
+    #[serde(default)]
     pub fg: Option<Colour>,
+    #[serde(default)]
     pub bg: Option<Colour>,
 }
 
@@ -153,12 +155,14 @@ impl Rectangle {
     }
 }
 
+#[derive(Debug)]
 pub struct Output {
     pub rect: Rectangle,
     pub win: xcb::Window,
     pub ctx: OutputContext,
 }
 
+#[derive(Debug)]
 pub struct OutputContext {
     cairo: cairo::Context,
 }
