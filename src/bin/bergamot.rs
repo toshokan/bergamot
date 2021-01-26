@@ -28,7 +28,7 @@ fn display(cfg: &Config, outputs: &[Output], widgets: &[Widget]) -> Vec<Paint> {
             top: 0.0,
             bottom: cfg.height.into(),
             left: 0.0,
-            center: (output.rect.width / 2.0) - center_width,
+            center: (output.rect.width / 2.0) - (center_width / 2.0),
             right: output.rect.width.into(),
         };
 
