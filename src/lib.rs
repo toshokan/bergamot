@@ -286,6 +286,16 @@ pub struct XcbConnection(pub xcb::Connection);
 unsafe impl Send for XcbConnection {}
 unsafe impl Sync for XcbConnection {}
 
+pub struct FontDescription(pub pango::FontDescription);
+
+impl FontDescription {
+    pub fn new(description: impl AsRef<str>) -> Self {
+        let fd = pango::FontDescription::from_string(description.as_ref());
+        Self(fd)
+    }
+}
+unsafe impl Send for FontDescription {}
+
 impl XcbConnection {
     pub fn flush(&self) {
         self.0.flush();
