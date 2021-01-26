@@ -221,6 +221,7 @@ impl OutputContext {
     }
 }
 
+#[derive(Debug)]
 pub struct Cursors {
     pub top: f64,
     pub bottom: f64,
@@ -379,7 +380,7 @@ pub fn create_output_windows(
             xcb::WINDOW_CLASS_INPUT_OUTPUT as u16,
             screen.root_visual(),
             &[
-                (xcb::CW_BACK_PIXEL, screen.white_pixel()),
+                (xcb::CW_BACK_PIXEL, screen.black_pixel()),
                 (
                     xcb::CW_EVENT_MASK,
                     xcb::EVENT_MASK_EXPOSURE | xcb::EVENT_MASK_BUTTON_PRESS,
