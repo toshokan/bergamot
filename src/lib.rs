@@ -275,9 +275,9 @@ impl Cursors {
 }
 
 pub struct Context<C> {
-    config: C,
-    outputs: Vec<Output>,
-    font: pango::FontDescription,
+    pub config: C,
+    pub outputs: Vec<Output>,
+    pub font: FontDescription,
 }
 
 unsafe impl Send for Output {}
@@ -456,16 +456,16 @@ pub fn create_output_windows(
     }
 
     outputs.sort_by(|l, r| {
-	use std::cmp::Ordering;
-	
-	if l.rect.y < r.rect.y && l.rect.x < r.rect.y {
-	    Ordering::Less
-	} else if l.rect.y < r.rect.y || l.rect.x < r.rect.x{
-	    Ordering::Less
-	} else {
-	    Ordering::Less
-	}
+        use std::cmp::Ordering;
+
+        if l.rect.y < r.rect.y && l.rect.x < r.rect.y {
+            Ordering::Less
+        } else if l.rect.y < r.rect.y || l.rect.x < r.rect.x {
+            Ordering::Less
+        } else {
+            Ordering::Less
+        }
     });
-    
+
     outputs
 }

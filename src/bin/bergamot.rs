@@ -1,8 +1,9 @@
+use bergamot::Context;
 use bergamot::{
     create_output_windows, get_connection, get_rectangles, get_screen, Command, Cursors, Draw,
     Layout, Update, Widget,
 };
-use bergamot::{error::Error, Colour, Output, Paint};
+use bergamot::{error::Error, Colour, Paint};
 use std::sync::{mpsc::channel, Arc, Mutex};
 
 struct Config {
@@ -12,33 +13,32 @@ struct Config {
     default_fg: Colour,
 }
 
-fn display(cfg: &Config, outputs: &[Output], widgets: &[Widget]) -> Vec<Paint> {
+fn display(context: &Context<Config>, widgets: &[Widget]) -> Vec<Paint> {
     let mut area_paints = vec![];
-    let font = pango::FontDescription::from_string(&cfg.font_str);
 
-    for output in outputs {
+    for output in &context.outputs {
         let (centered, uncentered): (Vec<(&Widget, Layout)>, Vec<(&Widget, Layout)>) = widgets
             .iter()
-            .map(|w| (w, Layout::new(&output.ctx, &w.area, &font)))
+            .map(|w| (w, Layout::new(&output.ctx, &w.area, &context.font.0)))
             .partition(|(w, _)| w.alignment.is_center());
 
         let center_width: f64 = centered.iter().map(|(_, l)| l.width).sum();
 
         let mut cursors = Cursors {
             top: 0.0,
-            bottom: cfg.height.into(),
+            bottom: context.config.height.into(),
             left: 0.0,
             center: (output.rect.width / 2.0) - (center_width / 2.0),
             right: output.rect.width.into(),
         };
 
-        output.ctx.set_colour(&cfg.default_bg);
+        output.ctx.set_colour(&context.config.default_bg);
         output.ctx.rectangle(&cursors.as_rectangle());
         output.ctx.fill();
 
         for (widget, layout) in uncentered.iter().chain(centered.iter()) {
-            let bg = widget.area.colours.bg.unwrap_or(cfg.default_bg);
-            let fg = widget.area.colours.fg.unwrap_or(cfg.default_fg);
+            let bg = widget.area.colours.bg.unwrap_or(context.config.default_bg);
+            let fg = widget.area.colours.fg.unwrap_or(context.config.default_fg);
 
             output.ctx.set_colour(&bg);
 
@@ -82,10 +82,18 @@ fn main() -> Result<(), Error> {
         },
     };
 
+    let font = bergamot::FontDescription::new(&cfg.font_str);
+
     let conn = get_connection()?;
     let screen = get_screen(&conn);
     let rectangles = get_rectangles(&conn, &screen)?;
     let windows = create_output_windows(&conn, &screen, cfg.height as i32, rectangles);
+
+    let ctx = Context {
+        config: cfg,
+        outputs: windows,
+        font,
+    };
 
     conn.0.flush();
 
@@ -152,7 +160,7 @@ fn main() -> Result<(), Error> {
         std::thread::spawn(move || {
             while let Ok(_) = rx.recv() {
                 let widgets = widgets.lock().unwrap();
-                let new_paints = display(&cfg, &windows, &widgets);
+                let new_paints = display(&ctx, &widgets);
                 conn.flush();
                 let mut paints = paints.lock().unwrap();
                 let _ = std::mem::replace(&mut *paints, new_paints);
