@@ -1,108 +1,67 @@
-use bergamot::{create_output_windows, get_connection, get_rectangles, get_screen};
-use bergamot::{error::Error, Align, Area, Colour, Output, Paint};
+use bergamot::{
+    create_output_windows, get_connection, get_rectangles, get_screen, Command, Cursors, Draw,
+    Layout, Update, Widget,
+};
+use bergamot::{error::Error, Colour, Output, Paint};
 use std::sync::{mpsc::channel, Arc, Mutex};
 
 struct Config {
     height: u32,
     font_str: String,
-    bg: Colour,
+    default_bg: Colour,
+    default_fg: Colour,
 }
 
-#[derive(Debug)]
-struct Layout {
-    pango_layout: pango::Layout,
-    width: f64,
-    height: f64,
-}
-
-fn create_layout(output: &Output, area: &Area, font: &pango::FontDescription) -> Layout {
-    let layout = pangocairo::create_layout(&output.ctx)
-        .expect("Failed to create pangocairo layout");
-    layout.set_font_description(Some(&font));
-    layout.set_text(&area.text);
-
-    let (w, h) = layout.get_pixel_size();
-    let area_width: f64 = (w + 10).into();
-    let layout_height: f64 = h.into();
-    
-    Layout {
-	pango_layout: layout,
-	width: area_width,
-	height: layout_height
-    }
-}
-
-fn display(cfg: &Config, outputs: &[Output], areas: &[Area]) -> Vec<Paint> {
+fn display(cfg: &Config, outputs: &[Output], widgets: &[Widget]) -> Vec<Paint> {
     let mut area_paints = vec![];
     let font = pango::FontDescription::from_string(&cfg.font_str);
 
-    let (centered_areas, other_areas): (Vec<&Area>, Vec<&Area>) = areas.iter().partition(|a| a.align.is_center());
-
     for output in outputs {
-        output
-            .ctx
-            .set_source_rgb(cfg.bg.red, cfg.bg.blue, cfg.bg.green);
-        output.ctx.rectangle(
-            0.0,
-            0.0,
-            output.rect.width.into(),
-            output.rect.height.into(),
-        );
+        let (centered, uncentered): (Vec<(&Widget, Layout)>, Vec<(&Widget, Layout)>) = widgets
+            .iter()
+            .map(|w| (w, Layout::new(&output.ctx, &w.area, &font)))
+            .partition(|(w, _)| w.alignment.is_center());
+
+        let center_width: f64 = centered.iter().map(|(_, l)| l.width).sum();
+
+        let mut cursors = Cursors {
+            top: 0.0,
+            bottom: cfg.height.into(),
+            left: 0.0,
+            center: (output.rect.width / 2.0) - center_width,
+            right: output.rect.width.into(),
+        };
+
+        output.ctx.set_colour(&cfg.default_bg);
+        output.ctx.rectangle(&cursors.as_rectangle());
         output.ctx.fill();
 
-        let mut left_finger = 0_f64;
-        let mut right_finger = output.rect.width.into();
+        for (widget, layout) in uncentered.iter().chain(centered.iter()) {
+            let bg = widget.area.colours.bg.unwrap_or(cfg.default_bg);
+            let fg = widget.area.colours.fg.unwrap_or(cfg.default_fg);
 
-	let centered_areas: Vec<(&&Area, Layout)> = centered_areas.iter().map(|a| (a, create_layout(output, a, &font))).collect();
-	let other_areas: Vec<(&&Area, Layout)> = other_areas.iter().map(|a| (a, create_layout(output, a, &font))).collect();
+            output.ctx.set_colour(&bg);
 
-	let center_width: f64 = centered_areas.iter().map(|(_, l)| l.width).sum();
-	let mut center_finger = (output.rect.width / 2) as f64 - center_width;
+            let rect = cursors.make_bounding_rectangle(widget, layout);
 
-        for (area, layout) in other_areas.iter().chain(centered_areas.iter()) {
-
-            let bg = area.bg.as_ref().unwrap_or(&Colour {
-                red: 0_f64,
-                blue: 0_f64,
-                green: 0_f64,
-            });
-
-            output.ctx.set_source_rgb(bg.red, bg.green, bg.blue);
-            let (left, right) = match area.align {
-                Align::Left => {
-                    let (left, right) = (left_finger, left_finger + layout.width);
-                    left_finger += layout.width;
-                    (left, right)
-                },
-                Align::Right => {
-                    let (left, right) = (right_finger - layout.width, right_finger);
-                    right_finger -= layout.width;
-                    (left, right)
-                },
-		// These are done after all other areas so they can overwrite previously painted areas.
-		Align::Center => {
-		    let (left, right) = (center_finger, center_finger + layout.width);
-		    center_finger += layout.width;
-		    (left, right)
-		}
-            };
-
-            let height = cfg.height.into();
-
-            output.ctx.rectangle(left, 0_f64, right - left, height);
+            output.ctx.rectangle(&rect);
             output.ctx.fill();
 
-            output
-                .ctx
-                .set_source_rgb(area.fg.red, area.fg.green, area.fg.blue);
-            output
-                .ctx
-                .move_to(left + 5_f64, height / 2_f64 - layout.height / 2_f64);
-            pangocairo::show_layout(&output.ctx, &layout.pango_layout);
+            output.ctx.set_colour(&fg);
 
-            area_paints.push(Paint { left, right, win: output.win, area: (**area).clone() })
+            output
+                .ctx
+                .move_to(rect.x + 5.0, rect.height / 2.0 - layout.height / 2.0);
+
+            layout.display(&output.ctx);
+
+            area_paints.push(Paint {
+                left: rect.x,
+                right: rect.x + rect.width,
+                win: output.win,
+                tag: widget.tag.clone(),
+            });
         }
-	
     }
     area_paints
 }
@@ -111,10 +70,15 @@ fn main() -> Result<(), Error> {
     let cfg = Config {
         height: 16,
         font_str: "monospace 9".to_string(),
-        bg: Colour {
-            red: 0.1,
-            blue: 0.1,
-            green: 0.1,
+        default_bg: Colour {
+            red: 0,
+            green: 0,
+            blue: 0,
+        },
+        default_fg: Colour {
+            red: 255,
+            green: 255,
+            blue: 255,
         },
     };
 
@@ -128,93 +92,120 @@ fn main() -> Result<(), Error> {
     let (tx, rx) = channel();
 
     let conn = Arc::new(conn);
-    let layout = Arc::new(Mutex::new(Vec::new()));
     let paints = Arc::new(Mutex::new(Vec::new()));
 
+    let widgets: Arc<Mutex<Vec<Widget>>> = Arc::new(Mutex::new(Vec::new()));
+
     let _stdin_handle = {
-	let layout = Arc::clone(&layout);
-	let tx = tx.clone();
-	std::thread::spawn(move || {
-	    use std::io::BufRead;
-	    
-	    let stdin = std::io::stdin();
-	    let mut stdin = stdin.lock();
+        let widgets = Arc::clone(&widgets);
+        let tx = tx.clone();
+        std::thread::spawn(move || {
+            use std::io::BufRead;
 
-	    let mut buf = String::new();
+            let stdin = std::io::stdin();
+            let mut stdin = stdin.lock();
 
-	    loop {
-		match stdin.read_line(&mut buf) {
-		    Ok(0) => break,
-		    Ok(_) => {
-			let value: Result<Vec<Area>, _> = serde_json::from_str(&buf);
-			if let Ok(new_layout) = value {
-			    let mut layout = layout.lock().unwrap();
-			    let _ = std::mem::replace(&mut *layout, new_layout);
-			    buf.clear();
+            let mut buf = String::new();
 
-			    tx.send(()).unwrap();
-			} else {
-			    eprintln!("{:?}", value);
-			}
-		    },
-		    _ => break,
-		}
-	    }
-	})
+            loop {
+                match stdin.read_line(&mut buf) {
+                    Ok(0) => break,
+                    Ok(_) => {
+                        if let Ok(command) = serde_json::from_str(&buf) {
+                            match command {
+                                Command::Update(Update { tag, area }) => {
+                                    let mut widgets = widgets.lock().unwrap();
+                                    let widget = widgets.iter_mut().find(|w| w.tag == tag);
+                                    if let Some(mut widget) = widget {
+                                        widget.area = area;
+                                        tx.send(()).unwrap();
+                                    } else {
+                                        eprintln!("No such widget '{}'", tag);
+                                    }
+                                }
+                                Command::Draw(Draw {
+                                    widgets: new_widgets,
+                                }) => {
+                                    let mut widgets = widgets.lock().unwrap();
+                                    widgets.clear();
+                                    *widgets = new_widgets;
+                                    tx.send(()).unwrap();
+                                }
+                            }
+                        } else {
+                            eprintln!("Failed to read command");
+                            let _: Command = serde_json::from_str(&buf).unwrap();
+                        }
+                        buf.clear();
+                    }
+                    _ => break,
+                }
+            }
+        })
     };
 
     let _draw_handle = {
-	let conn = Arc::clone(&conn);
-	let layout = Arc::clone(&layout);
-	let paints = Arc::clone(&paints);
-	std::thread::spawn(move || {
-	    while let Ok(_) = rx.recv() {
-		let layout = layout.lock().unwrap();
-		let new_paints = display(&cfg, &windows, &layout);
-		conn.flush();
-		let mut paints = paints.lock().unwrap();
-		let _ = std::mem::replace(&mut *paints, new_paints);
-	    }
-	})
+        let conn = Arc::clone(&conn);
+        let paints = Arc::clone(&paints);
+
+        let widgets = Arc::clone(&widgets);
+        std::thread::spawn(move || {
+            while let Ok(_) = rx.recv() {
+                let widgets = widgets.lock().unwrap();
+                let new_paints = display(&cfg, &windows, &widgets);
+                conn.flush();
+                let mut paints = paints.lock().unwrap();
+                let _ = std::mem::replace(&mut *paints, new_paints);
+            }
+        })
     };
 
     while let Some(event) = conn.0.wait_for_event() {
-	match event.response_type() & !0x80 {
-	    xcb::EXPOSE => {
-		tx.send(()).unwrap();
-	    }
-	    xcb::BUTTON_PRESS => {
-		let event: &xcb::ButtonPressEvent = unsafe { xcb::cast_event(&event) };
-		let win = event.event();
-		let x = event.event_x().into();
+        match event.response_type() & !0x80 {
+            xcb::EXPOSE => {
+                tx.send(()).unwrap();
+            }
+            xcb::BUTTON_PRESS => {
+                let event: &xcb::ButtonPressEvent = unsafe { xcb::cast_event(&event) };
+                let win = event.event();
+                let x = event.event_x().into();
 
-		let paints = paints
-		    .lock()
-		    .unwrap();
-		
-		let paint = paints
-		    .iter()
-		    .filter(|p: &&Paint| p.win == win && p.left <= x && p.right >= x)
-		    .min_by(|p1, p2| (p1.right - p1.left).partial_cmp(&(p2.right - p2.left)).unwrap());
+                let paints = paints.lock().unwrap();
 
+                let paint = paints
+                    .iter()
+                    .filter(|p: &&Paint| p.win == win && p.left <= x && p.right >= x)
+                    .min_by(|p1, p2| {
+                        (p1.right - p1.left)
+                            .partial_cmp(&(p2.right - p2.left))
+                            .unwrap()
+                    });
 
-		if let Some(p) = paint {
-		    let button = event.detail();
-		    let cmd = match button {
-			1 => &p.area.on_click,
-			2 => &p.area.on_middle_click,
-			3 => &p.area.on_right_click,
-			_ => &None,
-		    };
-		    
-		    if let Some(cmd) = cmd {
-			println!("{}", cmd);
-		    }
-		}
-	    }
-	    _ => (),
-	}
-	conn.0.flush();
+                if let Some(p) = paint {
+                    let widgets = widgets.lock().unwrap();
+                    let widget = widgets.iter().find(|w| w.tag == p.tag);
+
+                    use bergamot::MouseButton;
+
+                    let button = match event.detail() {
+                        1 => Some(MouseButton::Left),
+                        2 => Some(MouseButton::Middle),
+                        3 => Some(MouseButton::Right),
+                        _ => None,
+                    };
+
+                    if let (Some(button), Some(widget)) = (button, widget) {
+                        let handlers = widget.area.on_click.iter().filter(|h| h.button == button);
+
+                        for handler in handlers {
+                            println!("{}", handler.output);
+                        }
+                    }
+                }
+            }
+            _ => (),
+        }
+        conn.0.flush();
     }
 
     Ok(())
