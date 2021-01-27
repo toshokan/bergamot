@@ -189,6 +189,7 @@ impl Default for Colours {
 
 #[derive(serde::Deserialize, Debug, Clone)]
 pub struct Area {
+    #[serde(default)]
     pub text: String,
     #[serde(default)]
     pub colours: Colours,

@@ -75,7 +75,7 @@ fn display(context: &Context<Config>, widgets: &[Widget]) -> Vec<Paint> {
 fn main() -> Result<(), Error> {
     let cfg = Config {
         height: 16,
-        font_str: "monospace 9".to_string(),
+        font_str: "Iosevka 9".to_string(),
         default_bg: Colour {
             red: 0,
             green: 0,
@@ -114,40 +114,43 @@ fn main() -> Result<(), Error> {
         let widgets = Arc::clone(&widgets);
         let tx = tx.clone();
         std::thread::spawn(move || {
+            use std::io::BufRead;
+
             let stdin = std::io::stdin();
             let stdin = stdin.lock();
 
-	    let deserializer = serde_json::Deserializer::from_reader(stdin);
-	    for command in deserializer.into_iter() {
-		if let Ok(command) = command {
-                    match command {
-                        Command::Update(Update { tag, area }) => {
-			    if tag == "" {
-				eprintln!("Cannot update an untagged widget");
-				continue;
-			    }
-                            let mut widgets = widgets.lock().unwrap();
-                            let widget = widgets.iter_mut().find(|w| w.tag == tag);
-                            if let Some(mut widget) = widget {
-                                widget.area = area;
+            for line in stdin.lines() {
+                if let Ok(line) = line {
+                    if let Ok(command) = serde_json::from_str(&line) {
+                        match command {
+                            Command::Update(Update { tag, area }) => {
+                                if tag == "" {
+                                    eprintln!("Cannot update an untagged widget");
+                                    continue;
+                                }
+                                let mut widgets = widgets.lock().unwrap();
+                                let widget = widgets.iter_mut().find(|w| w.tag == tag);
+                                if let Some(mut widget) = widget {
+                                    widget.area = area;
+                                    tx.send(()).unwrap();
+                                } else {
+                                    eprintln!("No such widget '{}'", tag);
+                                }
+                            }
+                            Command::Draw(Draw {
+                                widgets: new_widgets,
+                            }) => {
+                                let mut widgets = widgets.lock().unwrap();
+                                widgets.clear();
+                                *widgets = new_widgets;
                                 tx.send(()).unwrap();
-                            } else {
-                                eprintln!("No such widget '{}'", tag);
                             }
                         }
-                        Command::Draw(Draw {
-                            widgets: new_widgets,
-                        }) => {
-                            let mut widgets = widgets.lock().unwrap();
-                            widgets.clear();
-                            *widgets = new_widgets;
-                            tx.send(()).unwrap();
-                        }
+                    } else {
+                        eprintln!("Failed to read command");
                     }
-                } else {
-                    eprintln!("Failed to read command");
                 }
-	    }
+            }
         })
     };
 
@@ -214,6 +217,5 @@ fn main() -> Result<(), Error> {
         }
         conn.0.flush();
     }
-
     Ok(())
 }
