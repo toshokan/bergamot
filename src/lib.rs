@@ -18,6 +18,40 @@ pub mod error {
     }
 }
 
+#[derive(serde::Deserialize)]
+#[derive(Debug, Clone)]
+#[serde(tag = "type", content = "value")]
+#[serde(rename_all = "lowercase")]
+pub enum Constraint {
+    Monitor(MonitorConstraint)
+}
+
+#[derive(serde::Deserialize)]
+#[derive(Debug, Clone, Copy)]
+#[serde(transparent)]
+pub struct MonitorConstraint(usize);
+
+impl MonitorConstraint {
+    pub fn number(&self) -> usize {
+	self.0
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[derive(Debug, Default, Clone)]
+#[serde(transparent)]
+pub struct Constraints(Vec<Constraint>);
+
+impl Constraints {
+    pub fn monitor(&self) -> impl Iterator<Item = MonitorConstraint> + '_ {
+	self.0.iter().filter_map(|c| {
+	    match c {
+		Constraint::Monitor(m) => Some(*m),
+	    }
+	})
+    }
+}
+
 #[derive(serde::Deserialize, Debug, Clone)]
 pub struct Update {
     pub tag: String,
@@ -44,6 +78,8 @@ pub struct Widget {
     pub alignment: Alignment,
     #[serde(flatten)]
     pub area: Area,
+    #[serde(default)]
+    pub constraints: Constraints
 }
 
 #[derive(serde::Deserialize, Debug, Clone, PartialEq, Eq)]
