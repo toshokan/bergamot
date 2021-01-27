@@ -69,6 +69,7 @@ pub enum Command {
 
 #[derive(serde::Deserialize, Debug, Clone)]
 pub struct Widget {
+    #[serde(default)]
     pub tag: String,
     pub alignment: Alignment,
     #[serde(flatten)]
@@ -123,7 +124,6 @@ impl<'de> serde::Deserialize<'de> for Colour {
 
             fn visit_str<E: Error>(self, value: &str) -> Result<Self::Value, E> {
                 fn byte<E: Error>(s: &str) -> Result<u8, E> {
-                    dbg!(&s);
                     u8::from_str_radix(s, 16)
                         .map_err(|_| Error::invalid_value(Unexpected::Str(s), &"hex bytes"))
                 }

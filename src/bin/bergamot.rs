@@ -114,47 +114,40 @@ fn main() -> Result<(), Error> {
         let widgets = Arc::clone(&widgets);
         let tx = tx.clone();
         std::thread::spawn(move || {
-            use std::io::BufRead;
-
             let stdin = std::io::stdin();
-            let mut stdin = stdin.lock();
+            let stdin = stdin.lock();
 
-            let mut buf = String::new();
-
-            loop {
-                match stdin.read_line(&mut buf) {
-                    Ok(0) => break,
-                    Ok(_) => {
-                        if let Ok(command) = serde_json::from_str(&buf) {
-                            match command {
-                                Command::Update(Update { tag, area }) => {
-                                    let mut widgets = widgets.lock().unwrap();
-                                    let widget = widgets.iter_mut().find(|w| w.tag == tag);
-                                    if let Some(mut widget) = widget {
-                                        widget.area = area;
-                                        tx.send(()).unwrap();
-                                    } else {
-                                        eprintln!("No such widget '{}'", tag);
-                                    }
-                                }
-                                Command::Draw(Draw {
-                                    widgets: new_widgets,
-                                }) => {
-                                    let mut widgets = widgets.lock().unwrap();
-                                    widgets.clear();
-                                    *widgets = new_widgets;
-                                    tx.send(()).unwrap();
-                                }
+	    let deserializer = serde_json::Deserializer::from_reader(stdin);
+	    for command in deserializer.into_iter() {
+		if let Ok(command) = command {
+                    match command {
+                        Command::Update(Update { tag, area }) => {
+			    if tag == "" {
+				eprintln!("Cannot update an untagged widget");
+				continue;
+			    }
+                            let mut widgets = widgets.lock().unwrap();
+                            let widget = widgets.iter_mut().find(|w| w.tag == tag);
+                            if let Some(mut widget) = widget {
+                                widget.area = area;
+                                tx.send(()).unwrap();
+                            } else {
+                                eprintln!("No such widget '{}'", tag);
                             }
-                        } else {
-                            eprintln!("Failed to read command");
-                            let _: Command = serde_json::from_str(&buf).unwrap();
                         }
-                        buf.clear();
+                        Command::Draw(Draw {
+                            widgets: new_widgets,
+                        }) => {
+                            let mut widgets = widgets.lock().unwrap();
+                            widgets.clear();
+                            *widgets = new_widgets;
+                            tx.send(()).unwrap();
+                        }
                     }
-                    _ => break,
+                } else {
+                    eprintln!("Failed to read command");
                 }
-            }
+	    }
         })
     };
 
