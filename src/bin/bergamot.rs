@@ -14,7 +14,8 @@ struct Config {
 fn display(context: &Context<Config>, widgets: &[Widget]) -> Vec<Paint> {
     let mut area_paints = vec![];
 
-    for output in &context.outputs {
+    for (output_no, output) in context.outputs.iter().enumerate() {
+	
         let (centered, uncentered): (Vec<(&Widget, Layout)>, Vec<(&Widget, Layout)>) = widgets
             .iter()
             .map(|w| (w, Layout::new(&output.ctx, &w.area, &context.font.0)))
@@ -35,6 +36,12 @@ fn display(context: &Context<Config>, widgets: &[Widget]) -> Vec<Paint> {
         output.ctx.fill();
 
         for (widget, layout) in uncentered.iter().chain(centered.iter()) {
+	    let monitor_constaints: Vec<_> = widget.constraints.monitor().collect();
+
+	    if !monitor_constaints.is_empty() && !monitor_constaints.iter().any(|m| m.number() == output_no) {
+		continue;
+	    }
+	    
             let bg = widget.area.colours.bg.unwrap_or(context.config.default_bg);
             let fg = widget.area.colours.fg.unwrap_or(context.config.default_fg);
 
