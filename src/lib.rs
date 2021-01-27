@@ -50,8 +50,7 @@ impl Constraints {
 #[derive(serde::Deserialize, Debug, Clone)]
 pub struct Update {
     pub tag: String,
-    #[serde(flatten)]
-    pub area: Area,
+    pub content: Vec<Area>,
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]
@@ -68,12 +67,12 @@ pub enum Command {
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct Widget {
     #[serde(default)]
     pub tag: String,
     pub alignment: Alignment,
-    #[serde(flatten)]
-    pub area: Area,
+    pub content: Vec<Area>,
     #[serde(default)]
     pub constraints: Constraints,
 }
@@ -146,7 +145,7 @@ impl<'de> serde::Deserialize<'de> for Colour {
                 let rc = RawColour::deserialize(MapAccessDeserializer::new(map))?;
                 Ok(Colour {
                     red: rc.red,
-                    green: rc.blue,
+                    green: rc.green,
                     blue: rc.blue,
                 })
             }
@@ -197,11 +196,12 @@ pub struct Area {
     pub on_click: Vec<ClickHandler>,
 }
 
+#[derive(Debug)]
 pub struct Paint {
     pub left: f64,
     pub right: f64,
     pub win: xcb::Window,
-    pub tag: String,
+    pub area: Area,
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]

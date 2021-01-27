@@ -1,5 +1,5 @@
 use bergamot::{
-    create_output_windows, error::Error, get_connection, get_rectangles, get_screen, Colour,
+    Area, create_output_windows, error::Error, get_connection, get_rectangles, get_screen, Colour,
     Command, Context, Cursors, Draw, Layout, Paint, Update, Widget,
 };
 use std::sync::{mpsc::channel, Arc, Mutex};
@@ -15,12 +15,12 @@ fn display(context: &Context<Config>, widgets: &[Widget]) -> Vec<Paint> {
     let mut area_paints = vec![];
 
     for (output_no, output) in context.outputs.iter().enumerate() {
-        let (centered, uncentered): (Vec<(&Widget, Layout)>, Vec<(&Widget, Layout)>) = widgets
+        let (centered, uncentered): (Vec<(&Widget, &Area, Layout)>, Vec<(&Widget, &Area, Layout)>) = widgets
             .iter()
-            .map(|w| (w, Layout::new(&output.ctx, &w.area, &context.font.0)))
-            .partition(|(w, _)| w.alignment.is_center());
+            .flat_map(|w| w.content.iter().map(move |a| (w, a, Layout::new(&output.ctx, a, &context.font.0))))
+            .partition(|(w, _, _)| w.alignment.is_center());
 
-        let center_width: f64 = centered.iter().map(|(_, l)| l.width).sum();
+        let center_width: f64 = centered.iter().map(|(_, _, l)| l.width).sum();
 
         let mut cursors = Cursors {
             top: 0.0,
@@ -34,7 +34,7 @@ fn display(context: &Context<Config>, widgets: &[Widget]) -> Vec<Paint> {
         output.ctx.rectangle(&cursors.as_rectangle());
         output.ctx.fill();
 
-        for (widget, layout) in uncentered.iter().chain(centered.iter()) {
+        for (widget, area, layout) in uncentered.iter().chain(centered.iter()) {
             let monitor_constaints: Vec<_> = widget.constraints.monitor().collect();
 
             if !monitor_constaints.is_empty()
@@ -43,8 +43,8 @@ fn display(context: &Context<Config>, widgets: &[Widget]) -> Vec<Paint> {
                 continue;
             }
 
-            let bg = widget.area.colours.bg.unwrap_or(context.config.default_bg);
-            let fg = widget.area.colours.fg.unwrap_or(context.config.default_fg);
+            let bg = area.colours.bg.unwrap_or(context.config.default_bg);
+            let fg = area.colours.fg.unwrap_or(context.config.default_fg);
 
             output.ctx.set_colour(&bg);
 
@@ -65,7 +65,7 @@ fn display(context: &Context<Config>, widgets: &[Widget]) -> Vec<Paint> {
                 left: rect.x,
                 right: rect.x + rect.width,
                 win: output.win,
-                tag: widget.tag.clone(),
+                area: (*area).clone(),
             });
         }
     }
@@ -123,7 +123,7 @@ fn main() -> Result<(), Error> {
                 if let Ok(line) = line {
                     if let Ok(command) = serde_json::from_str(&line) {
                         match command {
-                            Command::Update(Update { tag, area }) => {
+                            Command::Update(Update { tag, content }) => {
                                 if tag == "" {
                                     eprintln!("Cannot update an untagged widget");
                                     continue;
@@ -131,7 +131,7 @@ fn main() -> Result<(), Error> {
                                 let mut widgets = widgets.lock().unwrap();
                                 let widget = widgets.iter_mut().find(|w| w.tag == tag);
                                 if let Some(mut widget) = widget {
-                                    widget.area = area;
+                                    widget.content = content;
                                     tx.send(()).unwrap();
                                 } else {
                                     eprintln!("No such widget '{}'", tag);
@@ -148,6 +148,7 @@ fn main() -> Result<(), Error> {
                         }
                     } else {
                         eprintln!("Failed to read command");
+			let _ : Command = serde_json::from_str(&line).unwrap();
                     }
                 }
             }
@@ -192,9 +193,6 @@ fn main() -> Result<(), Error> {
                     });
 
                 if let Some(p) = paint {
-                    let widgets = widgets.lock().unwrap();
-                    let widget = widgets.iter().find(|w| w.tag == p.tag);
-
                     use bergamot::MouseButton;
 
                     let button = match event.detail() {
@@ -204,8 +202,8 @@ fn main() -> Result<(), Error> {
                         _ => None,
                     };
 
-                    if let (Some(button), Some(widget)) = (button, widget) {
-                        let handlers = widget.area.on_click.iter().filter(|h| h.button == button);
+                    if let Some(button) = button {
+                        let handlers = p.area.on_click.iter().filter(|h| h.button == button);
 
                         for handler in handlers {
                             println!("{}", handler.output);
