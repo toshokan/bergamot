@@ -199,7 +199,11 @@ fn main() -> Result<(), Error> {
                         1 => Some(MouseButton::Left),
                         2 => Some(MouseButton::Middle),
                         3 => Some(MouseButton::Right),
-                        _ => None,
+                        4 => Some(MouseButton::ScrollUp),
+			5 => Some(MouseButton::ScrollDown),
+			6 => Some(MouseButton::ScrollLeft),
+			7 => Some(MouseButton::ScrollRight),
+			_ => None
                     };
 
                     if let Some(button) = button {

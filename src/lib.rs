@@ -83,6 +83,10 @@ pub enum MouseButton {
     Left,
     Middle,
     Right,
+    ScrollUp,
+    ScrollDown,
+    ScrollLeft,
+    ScrollRight
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]
