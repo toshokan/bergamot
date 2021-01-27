@@ -98,61 +98,61 @@ pub struct Colour {
     pub blue: u8,
 }
 
-impl<'de> serde::Deserialize<'de> for Colour
-{
+impl<'de> serde::Deserialize<'de> for Colour {
     fn deserialize<D>(deserializer: D) -> Result<Colour, D::Error>
     where
-	D: serde::Deserializer<'de>
+        D: serde::Deserializer<'de>,
     {
-	use serde::de::{self, Error, Unexpected, MapAccess};
-	use std::fmt;
+        use serde::de::{self, Error, MapAccess, Unexpected};
+        use std::fmt;
 
-	struct RgbOrHex;
-	#[derive(serde::Deserialize)]
-	pub struct RawColour {
-	    pub red: u8,
-	    pub green: u8,
-	    pub blue: u8,
-	}
+        struct RgbOrHex;
+        #[derive(serde::Deserialize)]
+        pub struct RawColour {
+            pub red: u8,
+            pub green: u8,
+            pub blue: u8,
+        }
 
-	impl <'de> de::Visitor<'de> for RgbOrHex {
-	    type Value = Colour;
+        impl<'de> de::Visitor<'de> for RgbOrHex {
+            type Value = Colour;
 
-	    fn expecting(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-		fmt.write_str("RGB map or hex colour code")
-	    }
+            fn expecting(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+                fmt.write_str("RGB map or hex colour code")
+            }
 
-	    fn visit_str<E: Error>(self, value: &str) -> Result<Self::Value, E> {
-		fn byte<E: Error>(s: &str) -> Result<u8, E> {
-		    dbg!(&s);
-		    u8::from_str_radix(s, 16).map_err(|_| Error::invalid_value(Unexpected::Str(s), &"hex bytes"))
-		}
-		
-		if value.len() == 7 && &value[0..1] == "#" {
-		    Ok(Colour {
-			red: byte(&value[1..3])?,
-			green: byte(&value[3..5])?,
-			blue: byte(&value[5..7])?
-		    })
-		} else {
-		    Err(Error::invalid_value(Unexpected::Str(value), &"hex bytes"))
-		}
-	    }
+            fn visit_str<E: Error>(self, value: &str) -> Result<Self::Value, E> {
+                fn byte<E: Error>(s: &str) -> Result<u8, E> {
+                    dbg!(&s);
+                    u8::from_str_radix(s, 16)
+                        .map_err(|_| Error::invalid_value(Unexpected::Str(s), &"hex bytes"))
+                }
 
-	    fn visit_map<M: MapAccess<'de>>(self, map: M) -> Result<Self::Value, M::Error> {
-		use serde::Deserialize;
-		use de::value::MapAccessDeserializer;
-		
-		let rc = RawColour::deserialize(MapAccessDeserializer::new(map))?;
-		Ok(Colour {
-		    red: rc.red,
-		    green: rc.blue,
-		    blue: rc.blue,
-		})
-	    }
-	}
+                if value.len() == 7 && &value[0..1] == "#" {
+                    Ok(Colour {
+                        red: byte(&value[1..3])?,
+                        green: byte(&value[3..5])?,
+                        blue: byte(&value[5..7])?,
+                    })
+                } else {
+                    Err(Error::invalid_value(Unexpected::Str(value), &"hex bytes"))
+                }
+            }
 
-	deserializer.deserialize_any(RgbOrHex)
+            fn visit_map<M: MapAccess<'de>>(self, map: M) -> Result<Self::Value, M::Error> {
+                use de::value::MapAccessDeserializer;
+                use serde::Deserialize;
+
+                let rc = RawColour::deserialize(MapAccessDeserializer::new(map))?;
+                Ok(Colour {
+                    red: rc.red,
+                    green: rc.blue,
+                    blue: rc.blue,
+                })
+            }
+        }
+
+        deserializer.deserialize_any(RgbOrHex)
     }
 }
 
