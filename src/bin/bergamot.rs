@@ -1,5 +1,5 @@
 use bergamot::{
-    Area, create_output_windows, error::Error, get_connection, get_rectangles, get_screen, Colour,
+    create_output_windows, error::Error, get_connection, get_rectangles, get_screen, Area, Colour,
     Command, Context, Cursors, Draw, Layout, Paint, Update, Widget,
 };
 use std::sync::{mpsc::channel, Arc, Mutex};
@@ -15,10 +15,15 @@ fn display(context: &Context<Config>, widgets: &[Widget]) -> Vec<Paint> {
     let mut area_paints = vec![];
 
     for (output_no, output) in context.outputs.iter().enumerate() {
-        let (centered, uncentered): (Vec<(&Widget, &Area, Layout)>, Vec<(&Widget, &Area, Layout)>) = widgets
-            .iter()
-            .flat_map(|w| w.content.iter().map(move |a| (w, a, Layout::new(&output.ctx, a, &context.font.0))))
-            .partition(|(w, _, _)| w.alignment.is_center());
+        let (centered, uncentered): (Vec<(&Widget, &Area, Layout)>, Vec<(&Widget, &Area, Layout)>) =
+            widgets
+                .iter()
+                .flat_map(|w| {
+                    w.content
+                        .iter()
+                        .map(move |a| (w, a, Layout::new(&output.ctx, a, &context.font.0)))
+                })
+                .partition(|(w, _, _)| w.alignment.is_center());
 
         let center_width: f64 = centered.iter().map(|(_, _, l)| l.width).sum();
 
@@ -148,7 +153,7 @@ fn main() -> Result<(), Error> {
                         }
                     } else {
                         eprintln!("Failed to read command");
-			let _ : Command = serde_json::from_str(&line).unwrap();
+                        let _: Command = serde_json::from_str(&line).unwrap();
                     }
                 }
             }
@@ -200,10 +205,10 @@ fn main() -> Result<(), Error> {
                         2 => Some(MouseButton::Middle),
                         3 => Some(MouseButton::Right),
                         4 => Some(MouseButton::ScrollUp),
-			5 => Some(MouseButton::ScrollDown),
-			6 => Some(MouseButton::ScrollLeft),
-			7 => Some(MouseButton::ScrollRight),
-			_ => None
+                        5 => Some(MouseButton::ScrollDown),
+                        6 => Some(MouseButton::ScrollLeft),
+                        7 => Some(MouseButton::ScrollRight),
+                        _ => None,
                     };
 
                     if let Some(button) = button {
