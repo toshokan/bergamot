@@ -15,7 +15,7 @@ fn display(context: &Context<Config>, widgets: &[Widget]) -> Vec<Paint> {
     let mut area_paints = vec![];
 
     for (output_no, output) in context.outputs.iter().enumerate() {
-        let (centered, uncentered): (Vec<(&Widget, &Area, Layout)>, Vec<(&Widget, &Area, Layout)>) =
+        let (centered, mut uncentered): (Vec<(&Widget, &Area, Layout)>, _) =
             widgets
                 .iter()
                 .flat_map(|w| {
@@ -23,23 +23,28 @@ fn display(context: &Context<Config>, widgets: &[Widget]) -> Vec<Paint> {
                         .iter()
                         .map(move |a| (w, a, Layout::new(&output.ctx, a, &context.font.0)))
                 })
-                .partition(|(w, _, _)| w.alignment.is_center());
-
+            .partition(|(w, _, _)| w.alignment.is_center());
+	
+	let (right, left): (Vec<(&Widget, &Area, Layout)>, _) = uncentered
+	    .drain(..)
+	    .partition(|(w, _, _)| w.alignment.is_right());
+	
         let center_width: f64 = centered.iter().map(|(_, _, l)| l.width).sum();
+	let right_width: f64 = right.iter().map(|(_, _, l)| l.width).sum();
 
         let mut cursors = Cursors {
             top: 0.0,
             bottom: context.config.height.into(),
             left: 0.0,
             center: (output.rect.width / 2.0) - (center_width / 2.0),
-            right: output.rect.width.into(),
+            right: output.rect.width - right_width,
         };
 
         output.ctx.set_colour(&context.config.default_bg);
         output.ctx.rectangle(&cursors.as_rectangle());
         output.ctx.fill();
 
-        for (widget, area, layout) in uncentered.iter().chain(centered.iter()) {
+        for (widget, area, layout) in left.iter().chain(right.iter()).chain(centered.iter()) {
             let monitor_constaints: Vec<_> = widget.constraints.monitor().collect();
 
             if !monitor_constaints.is_empty()
@@ -74,23 +79,18 @@ fn display(context: &Context<Config>, widgets: &[Widget]) -> Vec<Paint> {
             });
         }
     }
+    
     area_paints
 }
 
 fn main() -> Result<(), Error> {
+    use std::str::FromStr;
+    
     let cfg = Config {
         height: 16,
-        font_str: "Iosevka 9".to_string(),
-        default_bg: Colour {
-            red: 0,
-            green: 0,
-            blue: 0,
-        },
-        default_fg: Colour {
-            red: 255,
-            green: 255,
-            blue: 255,
-        },
+        font_str: "Iosevka Term 9".to_string(),
+        default_bg: Colour::from_str("#333232").unwrap(),
+        default_fg: Colour::from_str("#a7a5a5").unwrap()
     };
 
     let font = bergamot::FontDescription::new(&cfg.font_str);
@@ -153,6 +153,7 @@ fn main() -> Result<(), Error> {
                         }
                     } else {
                         eprintln!("Failed to read command");
+			eprintln!("line was <{}>", &line);
                         let _: Command = serde_json::from_str(&line).unwrap();
                     }
                 }
