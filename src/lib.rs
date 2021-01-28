@@ -103,12 +103,40 @@ pub struct Colour {
     pub blue: u8,
 }
 
+pub struct BadHexFormat(String);
+
+impl std::fmt::Debug for BadHexFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+	write!(f, "bad hex format {}", self.0)
+    }
+}
+
+impl std::str::FromStr for Colour {
+    type Err = BadHexFormat;
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+	fn byte(s: &str) -> Result<u8, BadHexFormat> {
+            u8::from_str_radix(s, 16)
+                .map_err(|_| BadHexFormat(s.to_string()))
+        }
+
+        if value.len() == 7 && &value[0..1] == "#" {
+            Ok(Colour {
+                red: byte(&value[1..3])?,
+                green: byte(&value[3..5])?,
+                blue: byte(&value[5..7])?,
+            })
+        } else {
+            Err(BadHexFormat(value.to_string()))
+        }
+    }
+}
+
 impl<'de> serde::Deserialize<'de> for Colour {
     fn deserialize<D>(deserializer: D) -> Result<Colour, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        use serde::de::{self, Error, MapAccess, Unexpected};
+        use serde::de::{self, Error, MapAccess};
         use std::fmt;
 
         struct RgbOrHex;
@@ -127,20 +155,11 @@ impl<'de> serde::Deserialize<'de> for Colour {
             }
 
             fn visit_str<E: Error>(self, value: &str) -> Result<Self::Value, E> {
-                fn byte<E: Error>(s: &str) -> Result<u8, E> {
-                    u8::from_str_radix(s, 16)
-                        .map_err(|_| Error::invalid_value(Unexpected::Str(s), &"hex bytes"))
-                }
-
-                if value.len() == 7 && &value[0..1] == "#" {
-                    Ok(Colour {
-                        red: byte(&value[1..3])?,
-                        green: byte(&value[3..5])?,
-                        blue: byte(&value[5..7])?,
-                    })
-                } else {
-                    Err(Error::invalid_value(Unexpected::Str(value), &"hex bytes"))
-                }
+		use std::str::FromStr;
+		
+		Colour::from_str(value).map_err(|e| {
+		    Error::custom(format!("{:?}", e))
+		})
             }
 
             fn visit_map<M: MapAccess<'de>>(self, map: M) -> Result<Self::Value, M::Error> {
