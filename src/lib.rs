@@ -72,13 +72,14 @@ pub struct Widget {
     #[serde(default)]
     pub tag: String,
     pub alignment: Alignment,
+    #[serde(default)]
     pub content: Vec<Area>,
     #[serde(default)]
     pub constraints: Constraints,
 }
 
 #[derive(serde::Deserialize, Debug, Clone, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "camelCase")]
 pub enum MouseButton {
     Left,
     Middle,
