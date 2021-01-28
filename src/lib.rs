@@ -210,7 +210,8 @@ impl Default for Colours {
     }
 }
 
-#[derive(serde::Deserialize, Debug, Clone)]
+#[derive(serde::Deserialize, Default, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct Area {
     #[serde(default)]
     pub text: String,
@@ -240,6 +241,13 @@ impl Alignment {
     pub fn is_center(&self) -> bool {
         match self {
             Self::Center => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_right(&self) -> bool {
+        match self {
+            Self::Right => true,
             _ => false,
         }
     }
@@ -357,8 +365,8 @@ impl Cursors {
 
     pub fn bump_right(&mut self, by: f64) -> (f64, f64) {
         let old = self.right;
-        self.right -= by;
-        (self.right, old)
+        self.right += by;
+        (old, self.right)
     }
 
     pub fn bump_center(&mut self, by: f64) -> (f64, f64) {
