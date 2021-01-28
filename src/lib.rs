@@ -482,7 +482,7 @@ pub fn create_output_windows(
             win,
             screen.root(),
             rectangle.x as i16,
-            (rectangle.y as i16) + 30,
+            (rectangle.y as i16) + 0,
             rectangle.width as u16,
             bar_height as u16,
             0,
