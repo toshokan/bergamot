@@ -538,6 +538,20 @@ pub fn create_output_windows(
                 32,
                 &[dock.atom()],
             );
+	    xcb::change_property(
+                &conn.0,
+                xcb::PROP_MODE_REPLACE as u8,
+                win,
+                xcb::ATOM_WM_CLASS,
+                xcb::ATOM_STRING,
+                8,
+                "bergamot\0bergamot".as_bytes()
+            );
+	    xcb::configure_window(
+		&conn.0,
+		win,
+		&[(xcb::CONFIG_WINDOW_STACK_MODE as u16, xcb::STACK_MODE_BELOW)]
+	    );
         }
 
         let visp = screen
