@@ -524,9 +524,15 @@ pub fn create_output_windows(
             ],
         );
 
-        if let [window_type, dock] = &intern_atoms(
+        if let [window_type, dock, state, below, strut] = &intern_atoms(
             &conn.0,
-            &["_NET_WM_WINDOW_TYPE", "_NET_WM_WINDOW_TYPE_DOCK"],
+            &[
+                "_NET_WM_WINDOW_TYPE",
+                "_NET_WM_WINDOW_TYPE_DOCK",
+                "_NET_WM_STATE",
+                "_NET_WM_STATE_BELOW",
+                "_NET_WM_STRUT_PARTIAL",
+            ],
         )[..]
         {
             xcb::change_property(
@@ -542,16 +548,42 @@ pub fn create_output_windows(
                 &conn.0,
                 xcb::PROP_MODE_REPLACE as u8,
                 win,
+                state.atom(),
+                xcb::ATOM_ATOM,
+                32,
+                &[below.atom()],
+            );
+	    xcb::change_property(
+                &conn.0,
+                xcb::PROP_MODE_REPLACE as u8,
+                win,
                 xcb::ATOM_WM_CLASS,
                 xcb::ATOM_STRING,
                 8,
                 "bergamot\0bergamot".as_bytes()
             );
-	    xcb::configure_window(
-		&conn.0,
-		win,
-		&[(xcb::CONFIG_WINDOW_STACK_MODE as u16, xcb::STACK_MODE_BELOW)]
-	    );
+            xcb::change_property(
+                &conn.0,
+                xcb::PROP_MODE_REPLACE as u8,
+                win,
+                strut.atom(),
+                xcb::ATOM_ATOM,
+                32,
+                &[
+                    0, //left
+                    0, //right
+		    bar_height, //top
+		    0, //bottom
+		    0, //left_start_y
+		    0, //left_end_y
+		    0, // right_start_y
+		    0, // right_end_y
+		    rectangle.x as i32, // top_start_x
+		    (rectangle.x + rectangle.width) as i32, // top_end_x
+		    0, // bottom_start_x
+		    0, // bottom_end_x
+                ],
+            );
         }
 
         let visp = screen
