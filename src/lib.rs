@@ -107,16 +107,15 @@ pub struct BadHexFormat(String);
 
 impl std::fmt::Debug for BadHexFormat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-	write!(f, "bad hex format {}", self.0)
+        write!(f, "bad hex format {}", self.0)
     }
 }
 
 impl std::str::FromStr for Colour {
     type Err = BadHexFormat;
     fn from_str(value: &str) -> Result<Self, Self::Err> {
-	fn byte(s: &str) -> Result<u8, BadHexFormat> {
-            u8::from_str_radix(s, 16)
-                .map_err(|_| BadHexFormat(s.to_string()))
+        fn byte(s: &str) -> Result<u8, BadHexFormat> {
+            u8::from_str_radix(s, 16).map_err(|_| BadHexFormat(s.to_string()))
         }
 
         if value.len() == 7 && &value[0..1] == "#" {
@@ -155,11 +154,9 @@ impl<'de> serde::Deserialize<'de> for Colour {
             }
 
             fn visit_str<E: Error>(self, value: &str) -> Result<Self::Value, E> {
-		use std::str::FromStr;
-		
-		Colour::from_str(value).map_err(|e| {
-		    Error::custom(format!("{:?}", e))
-		})
+                use std::str::FromStr;
+
+                Colour::from_str(value).map_err(|e| Error::custom(format!("{:?}", e)))
             }
 
             fn visit_map<M: MapAccess<'de>>(self, map: M) -> Result<Self::Value, M::Error> {
@@ -566,6 +563,15 @@ pub fn create_output_windows(
                 &conn.0,
                 xcb::PROP_MODE_REPLACE as u8,
                 win,
+                state.atom(),
+                xcb::ATOM_ATOM,
+                32,
+                &[below.atom()],
+            );
+            xcb::change_property(
+                &conn.0,
+                xcb::PROP_MODE_REPLACE as u8,
+                win,
                 strut.atom(),
                 xcb::ATOM_ATOM,
                 32,
@@ -583,6 +589,15 @@ pub fn create_output_windows(
 		    0, // bottom_start_x
 		    0, // bottom_end_x
                 ],
+            );
+            xcb::change_property(
+                &conn.0,
+                xcb::PROP_MODE_REPLACE as u8,
+                win,
+                xcb::ATOM_WM_CLASS,
+                xcb::ATOM_STRING,
+                8,
+                "bergamot\0bergamot".as_bytes(),
             );
         }
 
