@@ -550,24 +550,6 @@ pub fn create_output_windows(
                 32,
                 &[below.atom()],
             );
-	    xcb::change_property(
-                &conn.0,
-                xcb::PROP_MODE_REPLACE as u8,
-                win,
-                xcb::ATOM_WM_CLASS,
-                xcb::ATOM_STRING,
-                8,
-                "bergamot\0bergamot".as_bytes()
-            );
-            xcb::change_property(
-                &conn.0,
-                xcb::PROP_MODE_REPLACE as u8,
-                win,
-                state.atom(),
-                xcb::ATOM_ATOM,
-                32,
-                &[below.atom()],
-            );
             xcb::change_property(
                 &conn.0,
                 xcb::PROP_MODE_REPLACE as u8,
