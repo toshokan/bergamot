@@ -555,7 +555,7 @@ pub fn create_output_windows(
                 xcb::PROP_MODE_REPLACE as u8,
                 win,
                 strut.atom(),
-                xcb::ATOM_ATOM,
+                xcb::ATOM_CARDINAL,
                 32,
                 &[
                     0, //left
