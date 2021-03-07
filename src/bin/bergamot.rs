@@ -126,36 +126,36 @@ fn main() -> Result<(), Error> {
 
             for line in stdin.lines() {
                 if let Ok(line) = line {
-                    if let Ok(command) = serde_json::from_str(&line) {
-                        match command {
-                            Command::Update(Update { tag, content }) => {
-                                if tag == "" {
-                                    eprintln!("Cannot update an untagged widget");
-                                    continue;
-                                }
-                                let mut widgets = widgets.lock().unwrap();
-                                let widget = widgets.iter_mut().find(|w| w.tag == tag);
-                                if let Some(mut widget) = widget {
-                                    widget.content = content;
+                    match serde_json::from_str(&line) {
+			Ok(command) => 
+                            match command {
+				Command::Update(Update { tag, content }) => {
+                                    if tag == "" {
+					eprintln!("Cannot update an untagged widget");
+					continue;
+                                    }
+                                    let mut widgets = widgets.lock().unwrap();
+                                    let widget = widgets.iter_mut().find(|w| w.tag == tag);
+                                    if let Some(mut widget) = widget {
+					widget.content = content;
+					tx.send(()).unwrap();
+                                    } else {
+					eprintln!("No such widget '{}'", tag);
+                                    }
+				}
+				Command::Draw(Draw {
+                                    widgets: new_widgets,
+				}) => {
+                                    let mut widgets = widgets.lock().unwrap();
+                                    widgets.clear();
+                                    *widgets = new_widgets;
                                     tx.send(()).unwrap();
-                                } else {
-                                    eprintln!("No such widget '{}'", tag);
-                                }
-                            }
-                            Command::Draw(Draw {
-                                widgets: new_widgets,
-                            }) => {
-                                let mut widgets = widgets.lock().unwrap();
-                                widgets.clear();
-                                *widgets = new_widgets;
-                                tx.send(()).unwrap();
-                            }
-                        }
-                    } else {
-                        eprintln!("Failed to read command");
-			eprintln!("line was <{}>", &line);
-                        let _: Command = serde_json::from_str(&line).unwrap();
-                    }
+				}
+                            },
+			Err(e) => {
+			    eprintln!("Failed to read command at line <{}>\nError: {}", line, e);
+			}
+		    }
                 }
             }
         })
