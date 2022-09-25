@@ -1,21 +1,24 @@
+use xcb::x::{Window, Screen, InternAtomReply};
+use xcb::Xid;
+
 pub mod error {
     #[derive(Debug)]
     pub enum Error {
-        XcbConn(xcb::base::ConnError),
-        XcbGeneric(xcb::base::GenericError),
+	Xcb(xcb::Error)
     }
 
-    impl From<xcb::base::ConnError> for Error {
-        fn from(e: xcb::base::ConnError) -> Self {
-            Self::XcbConn(e)
+    impl From<xcb::Error> for Error {
+        fn from(e: xcb::Error) -> Self {
+            Self::Xcb(e)
         }
     }
 
-    impl From<xcb::base::GenericError> for Error {
-        fn from(e: xcb::base::GenericError) -> Self {
-            Self::XcbGeneric(e)
-        }
+    impl From<xcb::ConnError> for Error {
+	fn from(e: xcb::ConnError) -> Self {
+	    Self::Xcb(xcb::Error::Connection(e))
+	}
     }
+
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]
@@ -222,7 +225,7 @@ pub struct Area {
 pub struct Paint {
     pub left: f64,
     pub right: f64,
-    pub win: xcb::Window,
+    pub win: Window,
     pub area: Area,
 }
 
@@ -250,7 +253,7 @@ impl Alignment {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Rectangle {
     pub x: f64,
     pub y: f64,
@@ -277,8 +280,10 @@ impl Rectangle {
 #[derive(Debug)]
 pub struct Output {
     pub rect: Rectangle,
-    pub win: xcb::Window,
+    pub win: Window,
     pub ctx: OutputContext,
+    pub font: FontDescription,
+    pub cfg: Config
 }
 
 #[derive(Debug)]
@@ -301,7 +306,7 @@ impl Layout {
         layout.set_font_description(Some(&font));
         layout.set_text(&area.text);
 
-        let (w, h) = layout.get_pixel_size();
+        let (w, h) = layout.pixel_size();
         let area_width: f64 = (w + 10).into();
         let layout_height: f64 = h.into();
 
@@ -327,7 +332,7 @@ impl OutputContext {
     }
 
     pub fn fill(&self) {
-        self.cairo.fill()
+        self.cairo.fill().expect("Failed to fill");
     }
 
     pub fn rectangle(&self, rect: &Rectangle) {
@@ -337,6 +342,11 @@ impl OutputContext {
             rect.width.into(),
             rect.height.into(),
         )
+    }
+
+    pub fn status(&self) {
+	let s = self.cairo.target();
+	s.flush();
     }
 
     pub fn move_to(&self, x: f64, y: f64) {
@@ -393,10 +403,12 @@ impl Cursors {
     }
 }
 
-pub struct Context<C> {
-    pub config: C,
-    pub outputs: Vec<Output>,
-    pub font: FontDescription,
+#[derive(Debug, Clone)]
+pub struct Config {
+    pub height: u32,
+    pub font_str: String,
+    pub default_bg: Colour,
+    pub default_fg: Colour,
 }
 
 unsafe impl Send for Output {}
@@ -405,6 +417,7 @@ pub struct XcbConnection(pub xcb::Connection);
 unsafe impl Send for XcbConnection {}
 unsafe impl Sync for XcbConnection {}
 
+#[derive(Debug, Clone)]
 pub struct FontDescription(pub pango::FontDescription);
 
 impl FontDescription {
@@ -417,16 +430,20 @@ unsafe impl Send for FontDescription {}
 
 impl XcbConnection {
     pub fn flush(&self) {
-        self.0.flush();
+        self.0.flush().expect("Failed to flush connection");
     }
 }
 
 pub fn get_connection() -> Result<XcbConnection, error::Error> {
-    let (conn, _) = xcb::Connection::connect(None)?;
+    let (conn, _) = xcb::Connection::connect_with_extensions(
+	None,
+	&[xcb::Extension::RandR],
+	&[]
+    )?;
     Ok(XcbConnection(conn))
 }
 
-pub fn get_screen(conn: &'_ XcbConnection) -> xcb::Screen<'_> {
+pub fn get_screen(conn: &'_ XcbConnection) -> &'_ Screen {
     conn.0
         .get_setup()
         .roots()
@@ -436,31 +453,32 @@ pub fn get_screen(conn: &'_ XcbConnection) -> xcb::Screen<'_> {
 
 pub fn get_rectangles(
     conn: &XcbConnection,
-    screen: &xcb::Screen<'_>,
+    screen: &Screen,
 ) -> Result<Vec<Rectangle>, error::Error> {
-    let present = xcb::xproto::query_extension(&conn.0, "RANDR")
-        .get_reply()?
-        .present();
 
-    if !present {
-        unimplemented!("RANDR must be present");
-    }
+    let resources = conn.0.wait_for_reply(conn.0.send_request(&xcb::randr::GetScreenResourcesCurrent {
+	window: screen.root()
+    }))?;
 
-    let resources = xcb::randr::get_screen_resources_current(&conn.0, screen.root()).get_reply()?;
 
     let outputs = resources.outputs();
 
     let mut crtcs = Vec::new();
 
     for output in outputs {
-        let info = xcb::randr::get_output_info(&conn.0, *output, xcb::CURRENT_TIME).get_reply()?;
+	let info = conn.0.wait_for_reply(conn.0.send_request(&xcb::randr::GetOutputInfo {
+	    output: *output,
+	    config_timestamp: xcb::x::CURRENT_TIME
+	}))?;
 
-        if info.crtc() == xcb::base::NONE
-            || Into::<u32>::into(info.connection()) == xcb::randr::CONNECTION_DISCONNECTED
+        if info.crtc().is_none() || info.connection() == xcb::randr::Connection::Disconnected
         {
             continue;
         } else {
-            let cookie = xcb::randr::get_crtc_info(&conn.0, info.crtc(), xcb::CURRENT_TIME);
+	    let cookie = conn.0.send_request(&xcb::randr::GetCrtcInfo {
+		crtc: info.crtc(),
+		config_timestamp: xcb::x::CURRENT_TIME,
+	    });
             crtcs.push(cookie);
         }
     }
@@ -468,7 +486,7 @@ pub fn get_rectangles(
     let mut rectangles = Vec::new();
 
     for crtc in crtcs {
-        let info = crtc.get_reply()?;
+        let info = conn.0.wait_for_reply(crtc)?;
         let rect = Rectangle {
             x: info.x().into(),
             y: info.y().into(),
@@ -481,106 +499,122 @@ pub fn get_rectangles(
     Ok(rectangles)
 }
 
-fn intern_atoms(conn: &'_ xcb::Connection, names: &[&str]) -> Vec<xcb::InternAtomReply> {
+fn intern_atoms(conn: &'_ xcb::Connection, names: &[&str]) -> Vec<InternAtomReply> {
     names
         .iter()
-        .map(|n| xcb::intern_atom(&conn, false, n))
-        .map(|c| c.get_reply().expect("Bad reply"))
+        .map(|n| conn.send_request(&xcb::x::InternAtom {
+	    only_if_exists: false,
+	    name: &n.as_bytes()
+	}))
+        .map(|c| conn.wait_for_reply(c).expect("Bad reply"))
         .collect()
 }
 
 pub fn create_output_windows(
     conn: &XcbConnection,
-    screen: &xcb::Screen<'_>,
-    bar_height: i32,
-    rectangles: Vec<Rectangle>,
+    screen: &Screen,
+    configs: &Vec<Config>,
+    mut rectangles: Vec<Rectangle>,
 ) -> Vec<Output> {
     let mut outputs = Vec::new();
 
-    for rectangle in rectangles {
-        let win = conn.0.generate_id();
+    rectangles.sort_by(|l, r| {
+        use std::cmp::Ordering;
 
-        xcb::create_window(
-            &conn.0,
-            xcb::COPY_FROM_PARENT as u8,
-            win,
-            screen.root(),
-            rectangle.x as i16,
-            (rectangle.y as i16) + 0,
-            rectangle.width as u16,
-            bar_height as u16,
-            0,
-            xcb::WINDOW_CLASS_INPUT_OUTPUT as u16,
-            screen.root_visual(),
-            &[
-                (xcb::CW_BACK_PIXEL, screen.black_pixel()),
-                (
-                    xcb::CW_EVENT_MASK,
-                    xcb::EVENT_MASK_EXPOSURE | xcb::EVENT_MASK_BUTTON_PRESS,
-                ),
+        if l.y < r.y && l.x < r.y {
+            Ordering::Less
+        } else if l.y < r.y || l.x < r.x {
+            Ordering::Less
+        } else {
+            Ordering::Less
+        }
+    });
+
+    for (rectangle, config) in rectangles.iter().zip(configs) {
+        let win: Window = conn.0.generate_id();
+
+	conn.0.send_request(&xcb::x::CreateWindow {
+	    depth: xcb::x::COPY_FROM_PARENT as u8,
+	    wid: win,
+	    parent: screen.root(),
+	    x: rectangle.x as i16,
+	    y: rectangle.y as i16,
+	    width: rectangle.width as u16,
+	    height: config.height as u16,
+	    border_width: 0,
+	    class: xcb::x::WindowClass::InputOutput,
+	    visual: screen.root_visual(),
+	    value_list: &[
+                xcb::x::Cw::BackPixel(screen.black_pixel()),
+		xcb::x::Cw::EventMask(xcb::x::EventMask::EXPOSURE | xcb::x::EventMask::BUTTON_PRESS)
             ],
-        );
+	});
 
-        if let [window_type, dock, state, below, strut] = &intern_atoms(
+        if let [window_type, dock, state, below, strut, strut_partial] = &intern_atoms(
             &conn.0,
             &[
                 "_NET_WM_WINDOW_TYPE",
                 "_NET_WM_WINDOW_TYPE_DOCK",
                 "_NET_WM_STATE",
                 "_NET_WM_STATE_BELOW",
+		"_NET_WM_STRUT",
                 "_NET_WM_STRUT_PARTIAL",
             ],
         )[..]
         {
-            xcb::change_property(
-                &conn.0,
-                xcb::PROP_MODE_REPLACE as u8,
-                win,
-                window_type.atom(),
-                xcb::ATOM_ATOM,
-                32,
-                &[dock.atom()],
-            );
-	    xcb::change_property(
-                &conn.0,
-                xcb::PROP_MODE_REPLACE as u8,
-                win,
-                state.atom(),
-                xcb::ATOM_ATOM,
-                32,
-                &[below.atom()],
-            );
-            xcb::change_property(
-                &conn.0,
-                xcb::PROP_MODE_REPLACE as u8,
-                win,
-                strut.atom(),
-                xcb::ATOM_CARDINAL,
-                32,
-                &[
-                    0, //left
+	    conn.0.send_request(&xcb::x::ChangeProperty {
+		mode: xcb::x::PropMode::Replace,
+		window: win,
+		property: window_type.atom(),
+		r#type: xcb::x::ATOM_ATOM,
+		data: &[dock.atom()]
+	    });
+	    conn.0.send_request(&xcb::x::ChangeProperty {
+		mode: xcb::x::PropMode::Replace,
+		window: win,
+		property: state.atom(),
+		r#type: xcb::x::ATOM_ATOM,
+		data: &[below.atom()]
+	    });
+	    conn.0.send_request(&xcb::x::ChangeProperty {
+		mode: xcb::x::PropMode::Replace,
+		window: win,
+		property: strut.atom(),
+		r#type: xcb::x::ATOM_CARDINAL,
+		data: &[
+		    0, //left
                     0, //right
-		    bar_height, //top
+		    config.height, //top
+		    0, //bottom
+		]
+	    });
+	    conn.0.send_request(&xcb::x::ChangeProperty {
+		mode: xcb::x::PropMode::Replace,
+		window: win,
+		property: strut_partial.atom(),
+		r#type: xcb::x::ATOM_CARDINAL,
+		data: &[
+		    0, //left
+                    0, //right
+		    config.height, //top
 		    0, //bottom
 		    0, //left_start_y
 		    0, //left_end_y
 		    0, // right_start_y
 		    0, // right_end_y
-		    rectangle.x as i32, // top_start_x
-		    (rectangle.x + rectangle.width) as i32, // top_end_x
+		    rectangle.x as u32, // top_start_x
+		    (rectangle.x + rectangle.width) as u32, // top_end_x
 		    0, // bottom_start_x
 		    0, // bottom_end_x
-                ],
-            );
-            xcb::change_property(
-                &conn.0,
-                xcb::PROP_MODE_REPLACE as u8,
-                win,
-                xcb::ATOM_WM_CLASS,
-                xcb::ATOM_STRING,
-                8,
-                "bergamot\0bergamot".as_bytes(),
-            );
+		]
+	    });
+	    conn.0.send_request(&xcb::x::ChangeProperty {
+		mode: xcb::x::PropMode::Replace,
+		window: win,
+		property: xcb::x::ATOM_WM_CLASS,
+		r#type: xcb::x::ATOM_STRING,
+		data: "bergamot\0bergamot".as_bytes(),
+	    });
         }
 
         let visp = screen
@@ -588,16 +622,19 @@ pub fn create_output_windows(
             .next()
             .expect("No allowed depths")
             .visuals()
-            .next()
-            .expect("No visuals")
-            .base;
+	    .iter()
+	    .next()
+            .expect("No visuals");
 
-        let vp = &visp as *const _ as *mut _;
-        let cp = conn.0.get_raw_conn() as *mut _;
-
-        let cvis = unsafe { cairo::XCBVisualType::from_raw_borrow(vp) };
-        let ccon = unsafe { cairo::XCBConnection::from_raw_borrow(cp) };
-        let cwin = cairo::XCBDrawable(win);
+	let cvis = unsafe {
+	    cairo::XCBVisualType::from_raw_none(
+		visp as *const _ as *mut xcb::x::Visualtype as *mut _)
+	};
+	let ccon = unsafe {
+	    cairo::XCBConnection::from_raw_none(conn.0.get_raw_conn() as *mut _)
+	};
+	
+        let cwin = cairo::XCBDrawable(win.resource_id());
 
         let surface = cairo::XCBSurface::create(
             &ccon,
@@ -605,32 +642,29 @@ pub fn create_output_windows(
             &cvis,
             rectangle.width as i32,
             rectangle.height as i32,
-        )
-        .expect("Failed to create cairo surface");
+        ).expect("Failed to create cairo surface");
+
+	let cctx = cairo::Context::new(&surface)
+	    .expect("Failed to create cairo context");
+	
         let ctx = OutputContext {
-            cairo: cairo::Context::new(&surface),
+            cairo: cctx
         };
 
-        xcb::map_window(&conn.0, win);
+	conn.0.send_request(&xcb::x::MapWindow {
+	    window: win
+	});
+
+	let font = FontDescription::new(&config.font_str);
 
         outputs.push(Output {
-            rect: rectangle,
+            rect: rectangle.clone(),
             win,
             ctx,
+	    font,
+	    cfg: config.clone()
         })
     }
-
-    outputs.sort_by(|l, r| {
-        use std::cmp::Ordering;
-
-        if l.rect.y < r.rect.y && l.rect.x < r.rect.y {
-            Ordering::Less
-        } else if l.rect.y < r.rect.y || l.rect.x < r.rect.x {
-            Ordering::Less
-        } else {
-            Ordering::Less
-        }
-    });
 
     outputs
 }

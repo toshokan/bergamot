@@ -1,28 +1,21 @@
 use bergamot::{
     create_output_windows, error::Error, get_connection, get_rectangles, get_screen, Area, Colour,
-    Command, Context, Cursors, Draw, Layout, Paint, Update, Widget,
+    Command, Output, Config, Cursors, Draw, Layout, Paint, Update, Widget,
 };
 use std::sync::{mpsc::channel, Arc, Mutex};
 
-struct Config {
-    height: u32,
-    font_str: String,
-    default_bg: Colour,
-    default_fg: Colour,
-}
-
-fn display(context: &Context<Config>, widgets: &[Widget]) -> Vec<Paint> {
+fn display(windows: &[Output], widgets: &[Widget]) -> Vec<Paint> {
     let mut area_paints = vec![];
 
-    for (output_no, output) in context.outputs.iter().enumerate() {
+    for (output_no, output) in windows.iter().enumerate() {
         let (centered, mut uncentered): (Vec<(&Widget, &Area, Layout)>, _) =
             widgets
-                .iter()
-                .flat_map(|w| {
-                    w.content
-                        .iter()
-                        .map(move |a| (w, a, Layout::new(&output.ctx, a, &context.font.0)))
-                })
+            .iter()
+            .flat_map(|w| {
+                w.content
+                    .iter()
+                    .map(move |a| (w, a, Layout::new(&output.ctx, a, &output.font.0)))
+            })
             .partition(|(w, _, _)| w.alignment.is_center());
 	
 	let (right, left): (Vec<(&Widget, &Area, Layout)>, _) = uncentered
@@ -34,13 +27,13 @@ fn display(context: &Context<Config>, widgets: &[Widget]) -> Vec<Paint> {
 
         let mut cursors = Cursors {
             top: 0.0,
-            bottom: context.config.height.into(),
+            bottom: output.cfg.height as f64,
             left: 0.0,
             center: (output.rect.width / 2.0) - (center_width / 2.0),
             right: output.rect.width - right_width,
         };
 
-        output.ctx.set_colour(&context.config.default_bg);
+        output.ctx.set_colour(&output.cfg.default_bg);
         output.ctx.rectangle(&cursors.as_rectangle());
         output.ctx.fill();
 
@@ -53,8 +46,8 @@ fn display(context: &Context<Config>, widgets: &[Widget]) -> Vec<Paint> {
                 continue;
             }
 
-            let bg = area.colours.bg.unwrap_or(context.config.default_bg);
-            let fg = area.colours.fg.unwrap_or(context.config.default_fg);
+            let bg = area.colours.bg.unwrap_or(output.cfg.default_bg);
+            let fg = area.colours.fg.unwrap_or(output.cfg.default_fg);
 
             output.ctx.set_colour(&bg);
 
@@ -63,6 +56,8 @@ fn display(context: &Context<Config>, widgets: &[Widget]) -> Vec<Paint> {
             output.ctx.rectangle(&rect);
             output.ctx.fill();
 
+	    output.ctx.status();
+
             output.ctx.set_colour(&fg);
 
             output
@@ -70,6 +65,8 @@ fn display(context: &Context<Config>, widgets: &[Widget]) -> Vec<Paint> {
                 .move_to(rect.x + 5.0, rect.height / 2.0 - layout.height / 2.0);
 
             layout.display(&output.ctx);
+
+	    output.ctx.status();
 
             area_paints.push(Paint {
                 left: rect.x,
@@ -86,27 +83,34 @@ fn display(context: &Context<Config>, widgets: &[Widget]) -> Vec<Paint> {
 fn main() -> Result<(), Error> {
     use std::str::FromStr;
     
-    let cfg = Config {
-        height: 16,
-        font_str: "Iosevka Term 9".to_string(),
-        default_bg: Colour::from_str("#333232").unwrap(),
-        default_fg: Colour::from_str("#a7a5a5").unwrap()
-    };
-
-    let font = bergamot::FontDescription::new(&cfg.font_str);
-
+    let cfgs = vec![
+	Config {
+            height: 14,
+            font_str: "Iosevka Term 9".to_string(),
+            default_bg: Colour::from_str("#333232").unwrap(),
+            default_fg: Colour::from_str("#a7a5a5").unwrap()
+	},
+	Config {
+            height: 18,
+            font_str: "Iosevka Term 12".to_string(),
+            default_bg: Colour::from_str("#333232").unwrap(),
+            default_fg: Colour::from_str("#a7a5a5").unwrap()
+	},
+	Config {
+            height: 18,
+            font_str: "Iosevka Term 12".to_string(),
+            default_bg: Colour::from_str("#333232").unwrap(),
+            default_fg: Colour::from_str("#a7a5a5").unwrap()
+	},
+    ];
+	
     let conn = get_connection()?;
     let screen = get_screen(&conn);
     let rectangles = get_rectangles(&conn, &screen)?;
-    let windows = create_output_windows(&conn, &screen, cfg.height as i32, rectangles);
+    let windows = create_output_windows(&conn, &screen, &cfgs, rectangles);
 
-    let ctx = Context {
-        config: cfg,
-        outputs: windows,
-        font,
-    };
 
-    conn.0.flush();
+    conn.0.flush().expect("Failed to flush connection");
 
     let (tx, rx) = channel();
 
@@ -169,7 +173,7 @@ fn main() -> Result<(), Error> {
         std::thread::spawn(move || {
             while let Ok(_) = rx.recv() {
                 let widgets = widgets.lock().unwrap();
-                let new_paints = display(&ctx, &widgets);
+                let new_paints = display(&windows, &widgets);
                 conn.flush();
                 let mut paints = paints.lock().unwrap();
                 let _ = std::mem::replace(&mut *paints, new_paints);
@@ -177,15 +181,14 @@ fn main() -> Result<(), Error> {
         })
     };
 
-    while let Some(event) = conn.0.wait_for_event() {
-        match event.response_type() & !0x80 {
-            xcb::EXPOSE => {
-                tx.send(()).unwrap();
-            }
-            xcb::BUTTON_PRESS => {
-                let event: &xcb::ButtonPressEvent = unsafe { xcb::cast_event(&event) };
-                let win = event.event();
-                let x = event.event_x().into();
+    while let Ok(xcb::Event::X(event)) = conn.0.wait_for_event() {
+	match event {
+	    xcb::x::Event::Expose(_) => {
+		tx.send(()).unwrap();
+	    },
+	    xcb::x::Event::ButtonPress(evt) => {
+                let win = evt.event();
+                let x = evt.event_x().into();
 
                 let paints = paints.lock().unwrap();
 
@@ -201,7 +204,7 @@ fn main() -> Result<(), Error> {
                 if let Some(p) = paint {
                     use bergamot::MouseButton;
 
-                    let button = match event.detail() {
+                    let button = match evt.detail() {
                         1 => Some(MouseButton::Left),
                         2 => Some(MouseButton::Middle),
                         3 => Some(MouseButton::Right),
@@ -220,10 +223,10 @@ fn main() -> Result<(), Error> {
                         }
                     }
                 }
-            }
-            _ => (),
-        }
-        conn.0.flush();
+	    },
+	    _ => {}
+	}
+        conn.0.flush().expect("Failed to flush connection");
     }
     Ok(())
 }
